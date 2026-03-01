@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  new
+  reviewing
+  ready
+  form_filling
+  form_ready
+  submitted
+  accepted
+  rejected
+  closed
+}
+
+enum JobSource {
+  new_grad
+  internship
+}
+
+enum ResumeChoice {
+  student
+  experienced
+}
+
+enum FormFillStatus {
+  pending
+  in_progress
+  completed
+  failed
+  awaiting_review
+}
+
+model Job {
+  id               String          @id @default(uuid())
+  company          String
+  role             String
+  location         String
+  applicationUrl   String
+  source           JobSource
+  datePosted       DateTime
+  dateDiscovered   DateTime        @default(now())
+  status           JobStatus       @default(new)
+  resumeChoice     ResumeChoice?
+  resumeRationale  String?
+  jobDescription   String?
+  formFillStatus   FormFillStatus?
+  formScreenshots  Json?
+  notes            String?
+  emailThreadId    String?
+  applications     Application[]
+
+  @@index([status])
+  @@index([source])
+  @@index([dateDiscovered])
+}
+
+model Application {
+  id             String   @id @default(uuid())
+  jobId          String
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  submittedAt    DateTime?
+  responseAt     DateTime?
+  response       String?
+  responseEmail  String?
+  createdAt      DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model UserProfile {
+  id                 String @id @default("singleton")
+  firstName          String
+  lastName           String
+  email              String
+  phone              String
+  linkedinUrl        String?
+  githubUrl          String?
+  portfolioUrl       String?
+  address            String?
+  city               String?
+  state              String?
+  zipCode            String?
+  country            String @default("United States")
+  workAuthorization  String @default("Authorized to work in the US")
+  currentEducation   String?
+  previousEducation  String?
+  workExperience     Json?
+  skills             String?
+  yearsOfExperience  String?
+  desiredSalary      String?
+  startDate          String?
+  veteranStatus      String @default("I am not a protected veteran")
+  disabilityStatus   String @default("I do not have any disabilities")
+  ethnicity          String?
+  gender             String?
+  customAnswers      Json?
+}
+
+model ResumeProfile {
+  id          String @id @default(uuid())
+  name        String @unique
+  filePath    String
+  textContent String
+  summary     String
+}
+
+model EmailSyncState {
+  id            String   @id @default("singleton")
+  lastSyncedAt  DateTime
+  lastHistoryId String?
+}

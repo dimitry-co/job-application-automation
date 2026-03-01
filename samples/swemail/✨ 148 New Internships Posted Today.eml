@@ -1,0 +1,601 @@
+Delivered-To: candidate@example.com
+Received: by 2002:a05:6022:5394:b0:f0:412f:ec5a with SMTP id cl20csp214552lab;
+        Tue, 24 Feb 2026 13:13:12 -0800 (PST)
+X-Received: by 2002:a05:6214:482:b0:897:a78:ebe8 with SMTP id 6a1803df08f44-89979e5387bmr196421206d6.28.1771967591938;
+        Tue, 24 Feb 2026 13:13:11 -0800 (PST)
+ARC-Seal: i=1; a=rsa-sha256; t=1771967591; cv=none;
+        d=google.com; s=arc-20240605;
+        b=BLwThchc/IeUx5q25Jfmuzm35rN52sN+rYTtL8fNr7sd+OCNF6biB2zyIMl9kwLUdc
+         +Ye/62ZyF4QEshx5omnXCPTX0AdQhgjcJodd5H+Jv0PERmv83LQBRv+mziAsDgIKLuFx
+         LrWoF9FGcVZDJjb3AXrLaAYhxGGuBp+JxCDsFr6O9gdXpsAh5yDzw5moUe5eq2J2Iijs
+         4Rj3/zy3BvlIHkoo/kL2pmWM5atmNmnC0zuXzFOWHa4019mZDfPtHwFquXs7P0t7lA3A
+         pD2Ts+ljJ0KG7Wr+PM6qn6ScDg1XOoL5E46Ge3ly6jZVFzwYMGVvrbGXSvUL10rCkeMD
+         QlTg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=content-transfer-encoding:from:subject:mime-version:list-id
+         :message-id:reply-to:to:list-unsubscribe:list-unsubscribe-post
+         :dkim-signature:dkim-signature:date;
+        bh=9cuTFaQgSTLm5BWQSt9K47R4UJ1KIND/vxVwKEE4HgU=;
+        fh=2iyeqjkWrjUmmMRoao/wvScqdQM2e5fEJ2oGPg4S4BI=;
+        b=gktOwREuL3Y8TnxHy9CpT/5g2ZYwHTJpSugS1cByHhhI2C+R2FBKuFmMLIS6gRXVrb
+         gLLEniNFvWRj+5pSFnSV1goOpBm2drfUKdmq64jffze+7T/q2dKn77PETua9SoZqhZuJ
+         j8AwofZx175Wk/7JpRiKu5fcwQcw/qocUlrOCalvMH70o4XtYINSM3qge+rjzGcsX7Kk
+         00dGSJex7nAyj92/0rAMolRGelA3s35sNl45DjCgBwnkWC5SvK1/aNB3XXjScnUZ1Kq2
+         jP3fFsR85oYNgr/NTNXYSZKUjAI/NzL313BE8DQR+LGtWodcqkT5UZhu/jN5KMdjCU1h
+         LJGQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@mg.swelist.com header.s=pic header.b=ExuWBSvY;
+       dkim=pass header.i=@mailgun.org header.s=mg header.b=owt0jEcj;
+       spf=pass (google.com: domain of bounce+926142.8ec8b7-candidate=example.com@mg.swelist.com designates 143.55.232.40 as permitted sender) smtp.mailfrom="bounce+926142.8ec8b7-candidate=example.com@mg.swelist.com";
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=swelist.com
+Return-Path: <bounce+926142.8ec8b7-candidate=example.com@mg.swelist.com>
+Received: from v540.v5f06b487.use4.send.mailgun.net (v540.v5f06b487.use4.send.mailgun.net. [143.55.232.40])
+        by mx.google.com with UTF8SMTPS id 6a1803df08f44-8997e7af72dsi141143636d6.617.2026.02.24.13.13.11
+        for <candidate@example.com>
+        (version=TLS1_2 cipher=ECDHE-ECDSA-AES128-GCM-SHA256 bits=128/128);
+        Tue, 24 Feb 2026 13:13:11 -0800 (PST)
+Received-SPF: pass (google.com: domain of bounce+926142.8ec8b7-candidate=example.com@mg.swelist.com designates 143.55.232.40 as permitted sender) client-ip=143.55.232.40;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@mg.swelist.com header.s=pic header.b=ExuWBSvY;
+       dkim=pass header.i=@mailgun.org header.s=mg header.b=owt0jEcj;
+       spf=pass (google.com: domain of bounce+926142.8ec8b7-candidate=example.com@mg.swelist.com designates 143.55.232.40 as permitted sender) smtp.mailfrom="bounce+926142.8ec8b7-candidate=example.com@mg.swelist.com";
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=swelist.com
+Date: Tue, 24 Feb 2026 13:13:11 -0800 (PST)
+DKIM-Signature: a=rsa-sha256; v=1; c=relaxed/relaxed; d=mg.swelist.com; q=dns/txt; s=pic; t=1771967591; x=1771974791;
+ h=Content-Transfer-Encoding: Content-Type: From: From: Subject: Subject: Mime-Version: List-Id: Message-Id: Reply-To: To: To: X-Feedback-Id: List-Unsubscribe: List-Unsubscribe-Post: Sender;
+ bh=9cuTFaQgSTLm5BWQSt9K47R4UJ1KIND/vxVwKEE4HgU=;
+ b=ExuWBSvYohbZR7Y9P9xWXhkU8dtNmVFgbz311XmWTLbvwkidBw5XvFvWX+xUG+8VcGhCyGw3SbQ2tfAWxzMl5s3saDMc8l4K2mlG3UBdROvfYXORmkyko6xCki7JiZk1qybbK2VFN3KTqslOvEHhAg6Varlw4/7MOT1GhOy6Vd+PFuR854J4lqCKVhmH7JfmcsTDgE3DT4cuajXm1keh9/A/DcD8KGUupLuHu0CmzwWlN/A/ypDWnlIgIfH5ePZfpLbOqsb4icbDDQqU4fgOvH8WdhkO41ZAkbYqLB4O6QiWNGkmfImOvIRdNWLksir0RCUvTXq3c01NCSyKr+Adiw==
+DKIM-Signature: a=rsa-sha256; v=1; c=relaxed/relaxed; d=mailgun.org; q=dns/txt; s=mg; t=1771967591; x=1771974791;
+ h=Content-Transfer-Encoding: Content-Type: From: From: Subject: Subject: Mime-Version: List-Id: Message-Id: Reply-To: To: To: X-Feedback-Id: List-Unsubscribe: List-Unsubscribe-Post: Sender;
+ bh=9cuTFaQgSTLm5BWQSt9K47R4UJ1KIND/vxVwKEE4HgU=;
+ b=owt0jEcjl7hu3Vk+zSmB1hMv1Eewfgz1ajZEHTWYx76JYKSfaPn2E4KLsGReC/v7xdar0ebF8aoIHvCRFNaXyy0l3/IeP4dPXgMwJk+HhQlD+Z0gnRqR/hD1S6BLr1G+hsOBOQpXk+CUMLqCnIhfenFDSabATz1M9LGjHQVf8jw=
+X-Mailgun-Sid: WyI4NGM3NCIsImdhbGxlZ29kaW1pdHJ5QGdtYWlsLmNvbSIsIjhlYzhiNyJd
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+List-Unsubscribe: <https://email.mg.swelist.com/u/eJwcyT0KwyAYBuDT6Cj6-j98Q5s290hUrKAEEmnp7Qudn0yhpLB7_qKYgGwVotsDUjTZOZ-gizXRRZs33ggSTgIGSmmlhBI7g8fzIa2-L8Y6HdZlZfDMyFHF9Sm9XVOkY_CT6tZ7qUduo83zy4ysY2v9j5MYbvxN-AUAAP__e9wn9g>
+X-Feedback-Id: postmaster@mg.swelist.com::64da8204dad8cc51ff7ae8b0:mailgun
+Received: by 9c207ad5e3f8bd3c6a7b9b40a7c8c72f90f94ded7faabae1910e0f7744332a00 with HTTP
+ id 699e1467e311e50257b9416e; Tue, 24 Feb 2026 21:13:11 GMT
+X-Mailgun-Sending-Ip: 143.55.232.40
+X-Mailgun-List-Id: 61966955
+X-Mailgun-List-Address: daily@mg.swelist.com
+To: Candidate <candidate@example.com>
+Reply-To: postmaster@mg.swelist.com
+Message-Id: <20260224211311.1.b'2ED053BC45638FCF'@mg.swelist.com>
+List-Id: <daily.mg.swelist.com>
+Mime-Version: 1.0
+Subject: =?UTF-8?q?=E2=9C=A8_148_New_Internships_Posted_Today?=
+From: SWE List <noreply@swelist.com>
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html>
+<!DOCTYPE html><html><head> <style>body{font-family: Arial, sans-serif; lin=
+e-height: 1.4;}a{color: #3366cc;}.internship{margin-left: 10px;}</style></h=
+ead>
+<body><img width=3D"1" height=3D"1" alt=3D"" src=3D"https://email.mg.swelis=
+t.com/o/eJwcykFqxSAQANDT6FKcUUddzKZpcw81agUlkISWf_sPf_8ODrWE7GVl8B4ieRdB_rL=
+J0LwmkypQasW6FKhUDdByK7Y4ORg1kka0CGAAFKgs0OPPt3bma7OOTNi3XaAXVq-u7v86x_2oci=
+65mCASRefkxT3NWft5jDWe6yWs7iuN-XF_jO8AAAD__0_ALN8">
+    <h3>Hey Candidate! Here is your daily update (2/24) of tech internships f=
+rom <a href=3D"https://swelist.com">swelist</a>:</h3>
+
+<div>
+  <div style=3D"border: 1px dashed #ccc; padding: 10px; background-color: #=
+f9f9f9; margin: 5px 0; line-height: 1.6;">
+    <p>
+      I built SWElist to help more people break into tech, especially those=
+ without insider connections (and yes, it=E2=80=99s still a one-man operati=
+on).
+    </p>
+    <p>
+      If this email helped you, please forward it to a friend who=E2=80=99s=
+ also navigating the job search =E2=80=93 it=E2=80=99s the best way to help=
+ SWElist grow.
+    </p>
+    <p>
+      Also, shoutout to the 70% of you already using Simplify. They generou=
+sly support SWElist and help keep it running. Plus, it=E2=80=99s genuinely =
+useful for autofilling applications and staying organized.
+    </p>
+    <p>
+      <a href=3D"https://simplify.jobs/copilot?utm_source=3Dswelistcta"><st=
+rong>Link to Simplify</strong></a>
+    </p>
+  </div>
+</div>
+
+
+<p class=3D"internship"><strong>OCLC:</strong> <a href=3D"https://simplify.=
+jobs/p/d6ad5f8b-3529-41fe-bc4a-ab3292939519?utm_source=3Dswelist">Resource =
+Sharing-Software Engineer Intern</a></p>
+<p class=3D"internship"><strong>OCLC:</strong> <a href=3D"https://simplify.=
+jobs/p/104fe4be-9886-46ce-a977-1914c5202d92?utm_source=3Dswelist">Data Scie=
+nce Intern</a></p>
+<p class=3D"internship"><strong>Danaher Corporation:</strong> <a href=3D"ht=
+tps://simplify.jobs/p/013dcdd8-012a-4ba2-ae80-b6068b3ebfb8?utm_source=3Dswe=
+list">Data Scientist =E2=80=93 Co-Op - Supply Chain AI</a></p>
+<p class=3D"internship"><strong>Ticketmaster:</strong> <a href=3D"https://l=
+ivenation.wd503.myworkdayjobs.com/en-US/TMExternalSite/details/Intern-Softw=
+are-Engineering_JR-85192">Intern Software Engineering</a></p>
+<p class=3D"internship"><strong>COUNTRY Financial:</strong> <a href=3D"http=
+s://simplify.jobs/p/1b4b0062-640e-447b-8769-af131e14cd65?utm_source=3Dsweli=
+st">Software Developer Intern</a></p>
+<p class=3D"internship"><strong>COUNTRY Financial:</strong> <a href=3D"http=
+s://simplify.jobs/p/c29d6772-2e1c-4df3-994b-b973bc7e1119?utm_source=3Dsweli=
+st">Data Science Intern - Digitalab</a></p>
+<p class=3D"internship"><strong>Arcline:</strong> <a href=3D"https://www.ed=
+uarcline.us/careers/software-engineering-intern">Software Engineering Inter=
+n</a></p>
+<p class=3D"internship"><strong>Arcline:</strong> <a href=3D"https://www.ed=
+uarcline.us/careers/ml-ai-infrastructure-intern">ML / AI Infrastructure Eng=
+ineering Intern</a></p>
+<p class=3D"internship"><strong>Arcline:</strong> <a href=3D"https://www.ed=
+uarcline.us/careers/agentic-ai-rd-intern">Agentic AI R&D Intern</a></p>
+<p class=3D"internship"><strong>T-Mobile:</strong> <a href=3D"https://tmobi=
+le.wd1.myworkdayjobs.com/en-US/External/details/Summer-2026-Associate-Engin=
+eer-Internship_REQ342273">Associate Engineer Internship</a></p>
+<p class=3D"internship"><strong>RTX:</strong> <a href=3D"https://simplify.j=
+obs/p/280ce838-8f8a-4246-b310-613c4f47a967?utm_source=3Dswelist">Test Engin=
+eering Specialist Co-op</a></p>
+<p class=3D"internship"><strong>Carnegie Mellon University:</strong> <a hre=
+f=3D"https://cmu.wd5.myworkdayjobs.com/en-US/CMU/job/Arlington-VA/DIT-Softw=
+are-Engineer-Intern_2024183">DIT Software Engineer Intern</a></p>
+<p class=3D"internship"><strong>Multiply Labs:</strong> <a href=3D"https://=
+jobs.lever.co/multiplylabs/8203fbb3-4d42-4f6a-ae64-f05c3dcf0e9b">Software E=
+ngineering Intern</a></p>
+<p class=3D"internship"><strong>CACI:</strong> <a href=3D"https://simplify.=
+jobs/p/b1f28d7a-ac0e-4d91-8a21-88e28b363934?utm_source=3Dswelist">Software =
+Engineer Intern</a></p>
+<p class=3D"internship"><strong>Multiply Labs:</strong> <a href=3D"https://=
+jobs.lever.co/multiplylabs/acca98ab-c206-4f71-b7a5-6977e4828586">Robotics S=
+oftware Intern</a></p>
+<p class=3D"internship"><strong>Roku:</strong> <a href=3D"https://simplify.=
+jobs/p/e8365cf1-74e3-4f55-a3c8-cb0ac2f2e16b?utm_source=3Dswelist">Applied S=
+cience Intern - PhD</a></p>
+<p class=3D"internship"><strong>HCompany:</strong> <a href=3D"https://simpl=
+ify.jobs/p/8d025ab1-dd40-4fc6-b039-ad07e208b45b?utm_source=3Dswelist">Resea=
+rch Scientist Intern - Model Team</a></p>
+<p class=3D"internship"><strong>Kaiser Permanente:</strong> <a href=3D"http=
+s://simplify.jobs/p/5c8c554a-6395-4ab0-8a0a-250efd4c25f7?utm_source=3Dsweli=
+st">Market Data Analytics Master Intern</a></p>
+<p class=3D"internship"><strong>Citco:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/4a20e1bb-ef0b-427b-b41f-aa6c=
+792d0705?utm_source=3Dswelist">Citco Te=
+chnology Management Intern - IT</a></p>
+<p class=3D"internship"><strong>Primetals Technologies:</strong> <a href=3D=
+"https://simplify.jobs/p/2310d0c9-8dfa-472a-8cc0-0dbfac6bd667?utm_source=3D=
+swelist">Full Stack Developer Intern</a></p>
+<p class=3D"internship"><strong>Brex:</strong> <a href=3D"https://simplify.=
+jobs/p/afd26269-ca6f-47e8-8959-cc00bcbe099a?utm_source=3Dswelist">Software =
+Engineer Intern</a></p>
+<p class=3D"internship"><strong>ExxonMobil:</strong> <a href=3D"https://sim=
+plify.jobs/p/035190df-2227-400e-a7e2-71fab1e6b4cb?utm_source=3Dswelist">Geo=
+science Student</a></p>
+<p class=3D"internship"><strong>The Walt Disney Company:</strong> <a href=
+=3D"https://simplify.jobs/p/dc95078e-6715-4d38-8d65-d815efc85633?utm_source=
+=3Dswelist">Character TD Intern - Character Simulation</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/22e27c6a-bd42-4ec0-bffa-90c=
+bd0540cb6?utm_source=3Dswelist">Defense Science and Technology Internship G=
+raduate Computer Student - Summer 2026</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/03e1a37a-8cb0-441d-8634-30c=
+094baf508?utm_source=3Dswelist">Predictive Science Academic Alliance Progra=
+m 4 Student Intern - Psaap IV</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/d29edc19-69fa-4939-8e58-bf9=
+865d9ac34?utm_source=3Dswelist">Materials Science Division Undergraduate In=
+tern</a></p>
+<p class=3D"internship"><strong>InfiniteQuant:</strong> <a href=3D"https://=
+simplify.jobs/p/ab3fe8e6-c27a-4c1a-9525-07d0c594d411?utm_source=3Dswelist">=
+Quantitative Developer =E2=80=93 Internship - Summer 2026</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/950b7894-cd25-4946-b228-1d2=
+044d5b2a9?utm_source=3Dswelist">Defense Science and Technology Internship G=
+raduate Student - Summer 2026</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/3b705752-5d76-40a3-aa7d-bd0=
+b2bfd8cc4?utm_source=3Dswelist">Graduate Intern - Nuclear and Chemical Scie=
+nces Division</a></p>
+<p class=3D"internship"><strong>Jobs for Humanity:</strong> <a href=3D"http=
+s://simplify.jobs/p/a12394d5-cf24-4163-b933-f97a81581b85?utm_source=3Dsweli=
+st">Artificial Intelligence Manager</a></p>
+<p class=3D"internship"><strong>PG&E:</strong> <a href=3D"https://simplify.=
+jobs/p/bc7d5dcd-5ea6-4f38-8a90-1e027e41c64d?utm_source=3Dswelist">Integrate=
+d Grid Planning Solutions Intern</a></p>
+<p class=3D"internship"><strong>LAXIR:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/0fd7656d-322f-47ea-9e64-07d6=
+9e3831ba?utm_source=3Dswelist">Junior F=
+ull-Stack Engineer</a></p>
+<p class=3D"internship"><strong>NXP Semiconductors:</strong> <a href=3D"htt=
+ps://simplify.jobs/p/4d69c7f0-0a70-4478-adc6-25c5e65d8429?utm_source=3Dswel=
+ist">Product Engineer</a></p>
+<p class=3D"internship"><strong>Infojini:</strong> <a href=3D"https://simpl=
+ify.jobs/p/ba7781d0-c294-42f8-8255-596388700098?utm_source=3Dswelist">GIS I=
+ntern Analyst</a></p>
+<p class=3D"internship"><strong>Legal & General:</strong> <a href=3D"https:=
+//simplify.jobs/p/4757ce71-7596-4e48-9db1-aaa09920727c?utm_source=3Dswelist=
+">Apprenticeship - Software Engineering L6 Programme - Cardiff</a></p>
+<p class=3D"internship"><strong>Legal & General:</strong> <a href=3D"https:=
+//simplify.jobs/p/6553117c-086b-4a60-be95-61e39e034f1c?utm_source=3Dswelist=
+">Apprenticeship - Asset Management Data Programme - London 2026</a></p>
+<p class=3D"internship"><strong>Louis Dreyfus Company:</strong> <a href=3D"=
+https://simplify.jobs/p/21d12b5b-effa-466d-bc77-27a0cc8334d6?utm_source=3Ds=
+welist">Trader Trainee Intern</a></p>
+<p class=3D"internship"><strong>InfiniteQuant:</strong> <a href=3D"https://=
+simplify.jobs/p/6ab03a5f-f381-4e0f-800e-7e9da2a0a188?utm_source=3Dswelist">=
+Quantitative Researcher =E2=80=93 Internship - Summer 2026</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/654915a5-5472-45c2-b83e-375=
+b462a4466?utm_source=3Dswelist">Defense Science and Technology Intern - Und=
+ergraduate Student</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/e2952ce0-dc19-4743-96d3-ac3=
+e643ae62a?utm_source=3Dswelist">Materials Science Division Graduate Intern<=
+/a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/9c8d3009-1c3d-43bf-82f2-f7a=
+599a6ca80?utm_source=3Dswelist">National Ignition Facility and Photon Scien=
+ce Undergraduate Intern - Summer 2026</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/e1ed499d-4c62-44ae-9926-30e=
+efc4959c3?utm_source=3Dswelist">Critical Infrastructure Analysis Undergradu=
+ate Intern - Summer 2026</a></p>
+<p class=3D"internship"><strong>Lawrence Livermore National Laboratory (LLN=
+L):</strong> <a href=3D"https://simplify.jobs/p/44134915-e78f-4a2d-a344-a6d=
+519cb8c4e?utm_source=3Dswelist">Physics Division Graduate Intern</a></p>
+<p class=3D"internship"><strong>Kanshe Infotech:</strong> <a href=3D"https:=
+//simplify.jobs/p/92bbc632-4d44-4392-ad7a-25a6c9a04784?utm_source=3Dswelist=
+">Data Analyst</a></p>
+<p class=3D"internship"><strong>Northrop Grumman:</strong> <a href=3D"https=
+://simplify.jobs/p/35315da3-70c7-4b19-be59-6296b9186047?utm_source=3Dswelis=
+t">Hardware Engineering Intern</a></p>
+<p class=3D"internship"><strong>VSP Vision:</strong> <a href=3D"https://sim=
+plify.jobs/p/b6f0418a-ba08-41ae-942a-85d4bcad51e5?utm_source=3Dswelist">Int=
+ern - Software Engineer - AI Framework and Standards</a></p>
+<p class=3D"internship"><strong>Nidec:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/01b5b7c1-4831-408e-b174-f194=
+61b9c971?utm_source=3Dswelist">Software=
+ Engineer Intern/Co-op</a></p>
+<p class=3D"internship"><strong>Robert Half:</strong> <a href=3D"https://si=
+mplify.jobs/p/36d71d1b-f9ad-47c9-8a47-051ed55117bd?utm_source=3Dswelist">So=
+ftware Engineer Marketing Web Applications Virtual Internship</a></p>
+<p class=3D"internship"><strong>Kaiser Permanente:</strong> <a href=3D"http=
+s://simplify.jobs/p/bf8fc130-1863-4fd0-927d-0094f9f19a7d?utm_source=3Dsweli=
+st">Consulting and Data Analytics Master Intern</a></p>
+<p class=3D"internship"><strong>LTA Research:</strong> <a href=3D"https://s=
+implify.jobs/p/ce224a51-f4ce-4caa-9e6d-aef1f09ea9a0?utm_source=3Dswelist">S=
+ummer Intern - Software Engineering</a></p>
+<p class=3D"internship"><strong>Robert Bosch Venture Capital:</strong> <a h=
+ref=3D"https://simplify.jobs/p/eeaab8b2-b281-47bf-b537-4c7226b7edf0?utm_sou=
+rce=3Dswelist">Software Engineer</a></p>
+<p class=3D"internship"><strong>Howmet Aerospace:</strong> <a href=3D"https=
+://simplify.jobs/p/957a2371-90f8-403b-b8ea-dd76758dcf73?utm_source=3Dswelis=
+t">Intern IT/IS</a></p>
+<p class=3D"internship"><strong>Horizon Technologies:</strong> <a href=3D"h=
+ttps://simplify.jobs/p/361da9d6-0536-41d6-9bde-f66cb07f52f6?utm_source=3Dsw=
+elist">Online Training and Placements on Adobe CQ5 and PEGA</a></p>
+<p class=3D"internship"><strong>First American:</strong> <a href=3D"https:/=
+/simplify.jobs/p/5a71a69d-be0f-40e0-aba6-20e079f77877?utm_source=3Dswelist"=
+>Business Systems Analyst Intern</a></p>
+<p class=3D"internship"><strong>Texas Capital Bank:</strong> <a href=3D"htt=
+ps://simplify.jobs/p/22ba1e51-8761-4539-9c59-c1750f72d119?utm_source=3Dswel=
+ist">Technology Intern Program - Summer 2026</a></p>
+<p class=3D"internship"><strong>Thales:</strong> <a href=3D"https://simplif=
+y.jobs/p/400dcbea-1490-4fe0-99ec-364b6d4bf4bb?utm_source=3Dswelist">Data Sc=
+ience Intern/Co-op</a></p>
+<p class=3D"internship"><strong>Bank of Montreal:</strong> <a href=3D"https=
+://simplify.jobs/p/89d8d1bc-1621-468f-89a7-821378b37b42?utm_source=3Dswelis=
+t">Analyst =E2=80=93 Co-op/Internship - Summer 2026 - 4 Months</a></p>
+<p class=3D"internship"><strong>Bank of Montreal:</strong> <a href=3D"https=
+://simplify.jobs/p/dc2be0b1-a3f1-4552-896e-24957f5fc050?utm_source=3Dswelis=
+t">Junior Developer =E2=80=93 Co-op/Internship - Summer 2026 - Weeks</a></p=
+>
+<p class=3D"internship"><strong>PNC Financial Services:</strong> <a href=3D=
+"https://simplify.jobs/p/910f99d4-c133-408e-a6f0-ac598d3bd1db?utm_source=3D=
+swelist">Graduate Intern - Modeling - Chief Investment Office</a></p>
+<p class=3D"internship"><strong>Altera Corporation:</strong> <a href=3D"htt=
+ps://simplify.jobs/p/77e8648b-bbd9-49c8-a035-2dab5d36c8f0?utm_source=3Dswel=
+ist">Platform Hardware/Software Engineer Intern</a></p>
+<p class=3D"internship"><strong>Global Partners:</strong> <a href=3D"https:=
+//simplify.jobs/p/ca0bc21d-83d2-4d98-8755-eed51baa8c9f?utm_source=3Dswelist=
+">Data Engineering Intern</a></p>
+<p class=3D"internship"><strong>Bank of Montreal:</strong> <a href=3D"https=
+://simplify.jobs/p/78635558-02bc-497f-b044-96b17495b4e5?utm_source=3Dswelis=
+t">Junior Developer =E2=80=93 Co-op/Internship - Summer 2026 - Weeks</a></p=
+>
+<p class=3D"internship"><strong>Bank of Montreal:</strong> <a href=3D"https=
+://simplify.jobs/p/c0d37323-7caf-41c2-99b9-5c8e2766a7cf?utm_source=3Dswelis=
+t">Analyst =E2=80=93 Co-op/Internship - Summer 2026 - 4 Months</a></p>
+<p class=3D"internship"><strong>Bank of Montreal:</strong> <a href=3D"https=
+://simplify.jobs/p/e16823be-fea9-4fa8-9cf1-8e902ab2a349?utm_source=3Dswelis=
+t">Junior Developer =E2=80=93 Co-op/Internship - Summer 2026 - Weeks</a></p=
+>
+<p class=3D"internship"><strong>Bank of Montreal:</strong> <a href=3D"https=
+://simplify.jobs/p/d3312fbc-f7c9-45b0-8224-dd2a8987195b?utm_source=3Dswelis=
+t">Analyst =E2=80=93 Co-op/Internship - Summer 2026 - 4 Months</a></p>
+<p class=3D"internship"><strong>Aristocrat Leisure:</strong> <a href=3D"htt=
+ps://simplify.jobs/p/4ddf12ca-1c86-46bc-9ff6-b4744ff4997f?utm_source=3Dswel=
+ist">Commercial Programs Intern</a></p>
+<p class=3D"internship"><strong>Sony:</strong> <a href=3D"https://simplify.=
+jobs/p/1c8db85e-f34a-4b3b-b809-3502d6cdbfa2?utm_source=3Dswelist">Intern =
+=E2=80=93 Advanced Computer Graphics Research</a></p>
+<p class=3D"internship"><strong>Carnegie Mellon University:</strong> <a hre=
+f=3D"https://simplify.jobs/p/22081ce2-e061-45ba-a71e-d5d4db3f819b?utm_sourc=
+e=3Dswelist">DIT Software Engineer Intern</a></p>
+<p class=3D"internship"><strong>CAE:</strong> <a href=3D"https://simplify.j=
+obs/p/a9ffd13f-44b3-4fe9-a951-d1f41367a50e?utm_source=3Dswelist">Data Analy=
+st Co-op/Intern</a></p>
+<p class=3D"internship"><strong>Johnson & Johnson:</strong> <a href=3D"http=
+s://simplify.jobs/p/cd790ac4-6dd6-4b81-8ff0-531e3ca3ed37?utm_source=3Dsweli=
+st">Clinical Data Analytics & AI Intern</a></p>
+<p class=3D"internship"><strong>HUB:</strong> <a href=3D"https://simplify.j=
+obs/p/fef25780-137d-4745-86f3-2475442d5650?utm_source=3Dswelist">Business I=
+ntelligence Administrator - Contract</a></p>
+<p class=3D"internship"><strong>Johnson & Johnson:</strong> <a href=3D"http=
+s://simplify.jobs/p/84d34dbd-3eb7-4e24-94a3-d7080de2fda9?utm_source=3Dsweli=
+st">Clinical Data Science Electrophysiology Biostatistics Intern</a></p>
+<p class=3D"internship"><strong>Johnson & Johnson:</strong> <a href=3D"http=
+s://simplify.jobs/p/9511fdd6-e89d-4b74-a335-0786308f7cb0?utm_source=3Dsweli=
+st">Clinical Data Science Electrophysiology =E2=80=93 Machine Learning Inte=
+rn</a></p>
+<p class=3D"internship"><strong>RELX:</strong> <a href=3D"https://simplify.=
+jobs/p/ee66228c-3d8e-45bb-b888-001930938360?utm_source=3Dswelist">Software =
+Engineer Intern</a></p>
+<p class=3D"internship"><strong>RELX:</strong> <a href=3D"https://simplify.=
+jobs/p/d06eb165-1148-421f-82bf-8ddc1bab6ac3?utm_source=3Dswelist">Software =
+Engineer Intern - Compass</a></p>
+<p class=3D"internship"><strong>The Walt Disney Company:</strong> <a href=
+=3D"https://simplify.jobs/p/490811f1-25fe-48c3-8ede-c846a1584a12?utm_source=
+=3Dswelist">Labor Systems Data Analytics & Integration Intern - Summer/Fall=
+ 2026</a></p>
+<p class=3D"internship"><strong>The Walt Disney Company:</strong> <a href=
+=3D"https://simplify.jobs/p/f9719612-87ae-4356-b19e-31cc930f6a40?utm_source=
+=3Dswelist">Labor Systems Data Analytics & Integration Intern - Summer/Fall=
+ 2026</a></p>
+<p class=3D"internship"><strong>Snap:</strong> <a href=3D"https://simplify.=
+jobs/p/5b596afe-1aa1-4666-9af4-509f605aaa7d?utm_source=3Dswelist">Product M=
+anager</a></p>
+<p class=3D"internship"><strong>NICE :</strong> <a href=3D"https://simplify=
+=2Ejobs/p/4d42422e-5768-41b1-86ca-3205=
+495df91e?utm_source=3Dswelist">Associat=
+e Software Engineer - Student Program - Angular/QA</a></p>
+<p class=3D"internship"><strong>Vercel:</strong> <a href=3D"https://simplif=
+y.jobs/p/cf6e9ca6-57ec-448e-bec6-20f37ed34b8c?utm_source=3Dswelist">Data Pl=
+atform & Engineering</a></p>
+<p class=3D"internship"><strong>Healthfirst:</strong> <a href=3D"https://si=
+mplify.jobs/p/d1b59eb3-bf1d-4cda-813e-576bdd1e61fc?utm_source=3Dswelist">Fi=
+nance Risk Analytics Intern</a></p>
+<p class=3D"internship"><strong>Magna:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/21158728-7655-48fe-b9f5-6b48=
+2280fd39?utm_source=3Dswelist">Benchmar=
+king and Product Line Engineering Student</a></p>
+<p class=3D"internship"><strong>Ciena:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/0073ca67-072c-4772-af09-c984=
+4d04d3ee?utm_source=3Dswelist">Friends=20=
+& Family : Wavelogic Software Intern</a></p>
+<p class=3D"internship"><strong>Ciena:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/c82946ef-cdc6-4316-90ee-083d=
+296759f4?utm_source=3Dswelist">THW Clie=
+nt Co-op</a></p>
+<p class=3D"internship"><strong>Relativity:</strong> <a href=3D"https://sim=
+plify.jobs/p/94441f31-e2ed-47c4-ae18-37b1a1c37bbf?utm_source=3Dswelist">Eng=
+ineering Intern</a></p>
+<p class=3D"internship"><strong>State Street:</strong> <a href=3D"https://s=
+implify.jobs/p/15ce39db-c353-4619-80d3-aba3102c84e8?utm_source=3Dswelist">P=
+roduct Management - Summer Internship-CRD</a></p>
+<p class=3D"internship"><strong>State Street:</strong> <a href=3D"https://s=
+implify.jobs/p/f4897896-4551-40f8-b48d-5f17789b8c05?utm_source=3Dswelist">S=
+oftware Engineer - Summer Intern-CRD</a></p>
+<p class=3D"internship"><strong>Intapp:</strong> <a href=3D"https://simplif=
+y.jobs/p/3c65df47-66d7-405b-aa8d-484707ca4960?utm_source=3Dswelist">Enginee=
+ring Intern</a></p>
+<p class=3D"internship"><strong>Unanet:</strong> <a href=3D"https://simplif=
+y.jobs/p/744f7d7a-b71f-4108-86b1-888bcfb8af65?utm_source=3Dswelist">Product=
+ Operations Analyst Intern</a></p>
+<p class=3D"internship"><strong>Five Below:</strong> <a href=3D"https://sim=
+plify.jobs/p/16ba313a-0abe-4387-93da-986c78748839?utm_source=3Dswelist">Int=
+ern - Digital Product Management</a></p>
+<p class=3D"internship"><strong>BeOne:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/72116a5b-1c35-44b3-998c-043a=
+43492e22?utm_source=3Dswelist">Summer I=
+nternship: AI & People Analytics Intern</a></p>
+<p class=3D"internship"><strong>Elsevier:</strong> <a href=3D"https://simpl=
+ify.jobs/p/5e305bd1-3b99-43ea-994a-0141f5dea7d6?utm_source=3Dswelist">Softw=
+are Engineer Intern - Compass</a></p>
+<p class=3D"internship"><strong>Elsevier:</strong> <a href=3D"https://simpl=
+ify.jobs/p/1e71c921-e90b-42fc-ad66-7cf4049e5141?utm_source=3Dswelist">Softw=
+are Engineer Intern</a></p>
+<p class=3D"internship"><strong>RTX:</strong> <a href=3D"https://simplify.j=
+obs/p/1be8187f-3d92-461f-abcc-45fae9530e3d?utm_source=3Dswelist">Analytics =
+and Machine Intelligence Intern</a></p>
+<p class=3D"internship"><strong>RTX:</strong> <a href=3D"https://simplify.j=
+obs/p/8dcc7508-2662-4a8a-9c53-32a18e672b1b?utm_source=3Dswelist">Summer 202=
+6 =E2=80=93 Agentic AI Intern</a></p>
+<p class=3D"internship"><strong>Flagship Pioneering:</strong> <a href=3D"ht=
+tps://simplify.jobs/p/9256ca03-6d68-4003-a337-454704ef81da?utm_source=3Dswe=
+list">Machine Learning Intern/Co-op</a></p>
+<p class=3D"internship"><strong>Flagship Pioneering:</strong> <a href=3D"ht=
+tps://simplify.jobs/p/b929b8d1-55fc-4097-8c9a-b29bdb38256e?utm_source=3Dswe=
+list">Machine Learning Co-op</a></p>
+<p class=3D"internship"><strong>Calyxo:</strong> <a href=3D"https://simplif=
+y.jobs/p/fba97f54-45fa-4a74-ad35-d47a0d93e4e5?utm_source=3Dswelist">Systems=
+ Integration and Test Intern</a></p>
+<p class=3D"internship"><strong>IMC Trading:</strong> <a href=3D"https://si=
+mplify.jobs/p/b0cab24e-6417-4d31-8c38-72e840e43ad3?utm_source=3Dswelist">La=
+unchpad Software Engineer Program</a></p>
+<p class=3D"internship"><strong>IMC Trading:</strong> <a href=3D"https://si=
+mplify.jobs/p/823db458-31ee-4535-b206-f36bc89e6596?utm_source=3Dswelist">20=
+26 Launchpad Quant Trading Program</a></p>
+<p class=3D"internship"><strong>Parsons:</strong> <a href=3D"https://simpli=
+fy.jobs/p/e75a6d09-55f7-4f23-8771-3df033f6225e?utm_source=3Dswelist">Engine=
+ering Co-Op Fall 2026</a></p>
+<p class=3D"internship"><strong>Pitney Bowes:</strong> <a href=3D"https://s=
+implify.jobs/p/cfc2508d-1c6b-4aca-b883-7d7d09edcfa9?utm_source=3Dswelist">A=
+rtificial Intelligence Intern</a></p>
+<p class=3D"internship"><strong>Booz Allen:</strong> <a href=3D"https://sim=
+plify.jobs/p/0193a7e2-b138-464b-a8fe-dbdd8f569dbf?utm_source=3Dswelist">Uni=
+versity Data Engineering Intern</a></p>
+<p class=3D"internship"><strong>Moog :</strong> <a href=3D"https://simplify=
+=2Ejobs/p/44a9f861-5cb7-4daa-b067-8868=
+cbe686ba?utm_source=3Dswelist">Intern S=
+ystems Engineering</a></p>
+<p class=3D"internship"><strong>Moog :</strong> <a href=3D"https://simplify=
+=2Ejobs/p/3071c5d9-d32b-43ef-9c88-a4fc=
+bf2c4450?utm_source=3Dswelist">Intern=20=
+=E2=80=93 Mechanical Product Engineering</a></p>
+<p class=3D"internship"><strong>Moog :</strong> <a href=3D"https://simplify=
+=2Ejobs/p/aa1aef1a-4fd6-4ed6-9e4b-af46=
+f9d76a58?utm_source=3Dswelist">Intern=20=
+=E2=80=93 Artificial Intelligence</a></p>
+<p class=3D"internship"><strong>Dorsia:</strong> <a href=3D"https://simplif=
+y.jobs/p/14931054-b866-45db-935d-839760af41e6?utm_source=3Dswelist">Softwar=
+e Engineer Intern</a></p>
+<p class=3D"internship"><strong>ezCater:</strong> <a href=3D"https://simpli=
+fy.jobs/p/6f9977c0-6a0f-45d7-96d2-81102908c0b6?utm_source=3Dswelist">Data E=
+ngineer Intern</a></p>
+<p class=3D"internship"><strong>ezCater:</strong> <a href=3D"https://simpli=
+fy.jobs/p/664069ac-996e-486c-bae1-606a389372a2?utm_source=3Dswelist">Front =
+End Engineering Intern</a></p>
+<p class=3D"internship"><strong>Warner Bros.:</strong> <a href=3D"https://s=
+implify.jobs/p/fdbf7401-c467-4529-b589-5d7cda38a5b1?utm_source=3Dswelist">S=
+ports Growth Strategy and Data Intern</a></p>
+<p class=3D"internship"><strong>Warner Bros.:</strong> <a href=3D"https://s=
+implify.jobs/p/6aced8d8-02b1-4296-83ea-08012eeed2de?utm_source=3Dswelist">R=
+esearch =E2=80=93 Analytics & Strategy Internships: LA - Summer 2026</a></p=
+>
+<p class=3D"internship"><strong> PrizePicks:</strong> <a href=3D"https://si=
+mplify.jobs/p/74544da6-ffeb-4219-8346-8f401b606cea?utm_source=3Dswelist">So=
+ftware Engineering Intern</a></p>
+<p class=3D"internship"><strong>CME Group:</strong> <a href=3D"https://simp=
+lify.jobs/p/8a5f8583-6e80-43f1-9d0e-9fd1f1e05602?utm_source=3Dswelist">Quan=
+t Risk Management Intern</a></p>
+<p class=3D"internship"><strong>Merck:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/8ef149b6-147f-41b8-8d8f-4ad0=
+61e439ff?utm_source=3Dswelist">Future T=
+alent Program Intern - Data Science and Scientific Informatics</a></p>
+<p class=3D"internship"><strong>G2:</strong> <a href=3D"https://simplify.jo=
+bs/p/1f63ff81-175e-42a1-ae21-7af4dcd536ec?utm_source=3Dswelist">GTM AI Engi=
+neering Intern</a></p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/c83df34b-384d-4dc8-beab-b6ca26d02d2a?utm_source=3Dswelist">Insu=
+rance Professionals =E2=80=93 AI Residency - Part-time - Frontier AI Resear=
+ch</a></p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/a8de100b-1d0c-4097-a730-ba0e2a28374e?utm_source=3Dswelist">Weal=
+th Management Professionals =E2=80=93 AI Residency - Part-time - Frontier A=
+I Research</a></p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/9f9413ef-0a67-45ec-a618-f1589695e062?utm_source=3Dswelist">Inve=
+stment Banking & Capital Markets Professionals =E2=80=93 AI Residency - Par=
+t-time - Frontier AI Research</a></p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/56fa5d14-0114-4ab5-878f-cb3554418630?utm_source=3Dswelist">Inve=
+stment Banking & Capital Markets Professionals =E2=80=93 AI Residency - Par=
+t-time - Frontier AI Research</a></p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/7594a641-d94b-48c2-8dae-6c818a06d41e?utm_source=3Dswelist">Asse=
+t Management Professional =E2=80=93 AI Residency - Frontier AI Research</a>=
+</p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/6646c978-af99-49d6-b437-c94096b36925?utm_source=3Dswelist">Real=
+ Estate Investment Professional =E2=80=93 AI Residency - Frontier AI Resear=
+ch</a></p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/9fb89df0-f28f-468d-9379-d0eaf5cbe4b0?utm_source=3Dswelist">Real=
+ Estate Investment Professionals =E2=80=93 AI Residency - Frontier AI Resea=
+rch</a></p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/edfc0828-3f17-44bb-ad9b-49fe4a9d0a06?utm_source=3Dswelist">PE &=
+ Growth Equity Professionals =E2=80=93 AI Residency - Part-time - Frontier =
+AI Research</a></p>
+<p class=3D"internship"><strong>Mentis AI:</strong> <a href=3D"https://simp=
+lify.jobs/p/19911186-575d-45f6-be14-7d93db376666?utm_source=3Dswelist">Asse=
+t Management Professional AI Residency - Frontier AI Research</a></p>
+<p class=3D"internship"><strong>ABB:</strong> <a href=3D"https://simplify.j=
+obs/p/9de484fd-2f68-4d70-8967-3238989fbdeb?utm_source=3Dswelist">Data Analy=
+st Intern</a></p>
+<p class=3D"internship"><strong>RTX:</strong> <a href=3D"https://simplify.j=
+obs/p/a7077cdd-32eb-4d96-9c94-38c56c09144f?utm_source=3Dswelist">Software E=
+ngineer Intern/Co-op</a></p>
+<p class=3D"internship"><strong>Viatris:</strong> <a href=3D"https://simpli=
+fy.jobs/p/c337d728-1284-4197-9376-7c9e1cf0b438?utm_source=3Dswelist">Intern=
+ =E2=80=93 IT Strategy and Emerging Technology</a></p>
+<p class=3D"internship"><strong>Viatris:</strong> <a href=3D"https://simpli=
+fy.jobs/p/b6a55945-5236-42bf-a08a-1e4cf020b6d0?utm_source=3Dswelist">Intern=
+ IT Analytics</a></p>
+<p class=3D"internship"><strong>Snowflake:</strong> <a href=3D"https://simp=
+lify.jobs/p/1a536c99-e6f4-43b9-a8db-dbbcbfac577c?utm_source=3Dswelist">Sale=
+s/GTM Apps Developer Intern - Summer 2026</a></p>
+<p class=3D"internship"><strong>Snowflake:</strong> <a href=3D"https://simp=
+lify.jobs/p/6ccb98f1-b909-479c-9f45-1b8885f472b8?utm_source=3Dswelist">Soft=
+ware Engineering Intern - Full Stack Applications</a></p>
+<p class=3D"internship"><strong>Snowflake:</strong> <a href=3D"https://simp=
+lify.jobs/p/c7262695-a757-480b-aa55-15dab8f2d009?utm_source=3Dswelist">Iron=
+clad CLM Developer Intern - Summer 2026</a></p>
+<p class=3D"internship"><strong>Snowflake:</strong> <a href=3D"https://simp=
+lify.jobs/p/12644078-4629-4d30-8ab4-9c9ef8579144?utm_source=3Dswelist">Fina=
+ncial System Intern - Summer 2026</a></p>
+<p class=3D"internship"><strong>Snowflake:</strong> <a href=3D"https://simp=
+lify.jobs/p/6b8c6e29-b530-4e3e-ab15-28fb42c49bbb?utm_source=3Dswelist">Fina=
+ncial System Intern - Summer 2026</a></p>
+<p class=3D"internship"><strong>Nestle:</strong> <a href=3D"https://simplif=
+y.jobs/p/8c6101b6-5b30-4c03-9b45-5be3a1476765?utm_source=3Dswelist">Applica=
+tions Web Developer Intern</a></p>
+<p class=3D"internship"><strong>Intuit:</strong> <a href=3D"https://simplif=
+y.jobs/p/d0e33d0d-89b6-4b30-be0f-82615b288898?utm_source=3Dswelist">Summer =
+2026: Data Analytics Co-op - 4 Months</a></p>
+<p class=3D"internship"><strong>Robert Bosch Venture Capital:</strong> <a h=
+ref=3D"https://simplify.jobs/p/75cb2835-1b78-43fd-aef2-46f4509d86ca?utm_sou=
+rce=3Dswelist">Automated Driving Intern - Simulation at Scale for RL</a></p=
+>
+<p class=3D"internship"><strong>W.W. Grainger:</strong> <a href=3D"https://=
+simplify.jobs/p/a58a4269-5490-4ec9-a256-e1a7fdddbb3d?utm_source=3Dswelist">=
+Business Analytics Intern - Fall 2026</a></p>
+<p class=3D"internship"><strong>Dominion Energy:</strong> <a href=3D"https:=
+//simplify.jobs/p/03c84c6c-8092-4ce3-a952-1a4542716700?utm_source=3Dswelist=
+">Nuclear Intern</a></p>
+<p class=3D"internship"><strong>Hearst:</strong> <a href=3D"https://simplif=
+y.jobs/p/1cee6851-93cf-4f5a-84bc-2f4eb7ea6f5c?utm_source=3Dswelist">Softwar=
+e Engineer Intern</a></p>
+<p class=3D"internship"><strong>Gorgias:</strong> <a href=3D"https://simpli=
+fy.jobs/p/69fee322-1dd4-4025-b28a-f3929f30b9f6?utm_source=3Dswelist">Produc=
+t Marketing Summer Intern - 3 Months</a></p>
+<p class=3D"internship"><strong>ACI Worldwide :</strong> <a href=3D"https:/=
+/simplify.jobs/p/1e8afdc6-0a6d-4bd2-802e-47a09789dde3?utm_source=3Dswelist"=
+>Software Engineering Intern</a></p>
+<p class=3D"internship"><strong>Multiply Labs:</strong> <a href=3D"https://=
+simplify.jobs/p/2fcb364d-58a6-476c-9c1a-05168f837913?utm_source=3Dswelist">=
+Software Intern</a></p>
+<p class=3D"internship"><strong>Nucor:</strong> <a href=3D"https://simplify=
+=2Ejobs/p/1e4a6941-f24c-4b78-8cb8-3b9c=
+e1986d97?utm_source=3Dswelist">Metallur=
+gist Intern-Summer/ Fall 2026</a></p>
+<p class=3D"internship"><strong>Radiance Technologies:</strong> <a href=3D"=
+https://simplify.jobs/p/26682154-dcb9-4581-ae4b-eb980f52eae7?utm_source=3Ds=
+welist">Junior Web Developer and Database Administrator Intern</a></p>
+<p class=3D"internship"><strong>PG&E:</strong> <a href=3D"https://simplify.=
+jobs/p/f455b5c3-6d29-4593-94e6-6f90f0b7d43a?utm_source=3Dswelist">Data Scie=
+ntist Intern - Diablo Canyon Power Plant</a></p>
+<p class=3D"internship"><strong>JMP Statistical Discovery:</strong> <a href=
+=3D"https://simplify.jobs/p/c20f69c0-8962-4930-ad22-80781d96ebbb?utm_source=
+=3Dswelist">JMP Academic Sales & Marketing Internship - Remote/hybrid</a></=
+p>
+<p class=3D"internship"><strong>Sandisk:</strong> <a href=3D"https://simpli=
+fy.jobs/p/10fbab89-7745-4b62-bdea-54cd3c31d034?utm_source=3Dswelist">Summer=
+ 2026 Internship - Systems Design Engineering</a></p>
+<p class=3D"internship"><strong>PennState University:</strong> <a href=3D"h=
+ttps://simplify.jobs/p/16240092-419b-423d-8246-64bf7dad53a6?utm_source=3Dsw=
+elist">College of IST Agentic AI Developer w/ Dr. Lee</a></p>
+
+<p>See more details by visiting the repo: <a href=3D"https://github.com/Sim=
+plifyJobs/Summer2026-Internships">Summer2026-Internships</a></p>
+
+<p><a href=3D"https://email.mg.swelist.com/u/eJwcyT0KwyAYBuDT6Cj6-j98Q5s290=
+hUrKAEEmnp7Qudn0yhpLB7_qKYgGwVotsDUjTZOZ-gizXRRZs33ggSTgIGSmmlhBI7g8fzIa2-L=
+8Y6HdZlZfDMyFHF9Sm9XVOkY_CT6tZ7qUduo83zy4ysY2v9j5MYbvxN-AUAAP__e9wn9g">Clic=
+k here to Unsubscribe</a></p>
+</body>
+</html>

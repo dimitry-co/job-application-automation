@@ -1,0 +1,12 @@
+.next
+node_modules
+coverage
+playwright-report
+test-results
+prisma/dev.db
+package-lock.json
+IMPLEMENTATION_PLAN.md
+PROJECT_CONTEXT.md
+user-profile.md
+docs/contracts.md
+skills/**/SKILL.md
