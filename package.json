@@ -18,7 +18,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "pr:create": "bash scripts/create-pr.sh"
+    "pr:create": "bash scripts/create-pr.sh",
+    "hooks:install": "bash scripts/install-hooks.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
