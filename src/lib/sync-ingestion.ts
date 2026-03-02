@@ -22,14 +22,6 @@ function buildCandidateKey(source: JobSource, applicationUrl: string): string {
   return `${source}:${applicationUrl}`;
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  if (!error || typeof error !== "object" || !("code" in error)) {
-    return false;
-  }
-
-  return (error as { code?: string }).code === "P2002";
-}
-
 function coerceDatePosted(datePosted: Date): Date {
   return Number.isNaN(datePosted.getTime()) ? new Date() : datePosted;
 }
@@ -46,14 +38,56 @@ function toPersistenceRecord(candidate: ParsedSWEListJob) {
   };
 }
 
-export async function ingestSWEListJobs(maxResults = 25): Promise<SyncIngestionResult> {
-  const emails = await getSWEListEmails(maxResults);
+const SYNC_STATE_SINGLETON_ID = "singleton";
+const INCREMENTAL_SYNC_MAX_RESULTS = 5;
+const INCREMENTAL_EMAILS_TO_PROCESS = 2;
+
+async function markSyncComplete(lastSyncedAt: Date): Promise<void> {
+  await prisma.emailSyncState.upsert({
+    where: { id: SYNC_STATE_SINGLETON_ID },
+    create: {
+      id: SYNC_STATE_SINGLETON_ID,
+      lastSyncedAt
+    },
+    update: {
+      lastSyncedAt
+    }
+  });
+}
+
+function buildCreateManyArgs(
+  data: ReturnType<typeof toPersistenceRecord>[]
+): Parameters<typeof prisma.job.createMany>[0] {
+  return {
+    data,
+    // We intentionally include skipDuplicates for idempotent sync writes.
+    skipDuplicates: true
+  } as unknown as Parameters<typeof prisma.job.createMany>[0];
+}
+
+export async function ingestSWEListJobs(): Promise<SyncIngestionResult> {
+  const syncState = await prisma.emailSyncState.findUnique({
+    // find the sync state to check if the sync is incremental. it re
+    where: { id: SYNC_STATE_SINGLETON_ID }
+  });
+  const isIncrementalSync = Boolean(syncState);
+
+  const fetchedEmails = await getSWEListEmails({
+    maxResults: INCREMENTAL_SYNC_MAX_RESULTS,
+    afterDate: syncState?.lastSyncedAt
+  });
+  const emails = isIncrementalSync
+    ? fetchedEmails.slice(0, INCREMENTAL_EMAILS_TO_PROCESS)
+    : fetchedEmails;
+
   const parsedCandidates = emails.flatMap((email) =>
     parseSWEListHtml(email.html, email.subject, email.datePosted)
   );
+  const completedAt = new Date();
 
   const discovered = parsedCandidates.length;
   if (discovered === 0) {
+    await markSyncComplete(completedAt);
     return { discovered: 0, created: 0, skipped: 0 };
   }
 
@@ -69,41 +103,13 @@ export async function ingestSWEListJobs(maxResults = 25): Promise<SyncIngestionR
 
   const deduped = Array.from(uniqueCandidates.values());
   if (deduped.length === 0) {
+    await markSyncComplete(completedAt);
     return { discovered, created: 0, skipped: discovered };
   }
 
-  let created = 0;
-  let uniqueConstraintSkips = 0;
+  const created = (await prisma.job.createMany(buildCreateManyArgs(deduped))).count;
 
-  await prisma.$transaction(async (tx) => {
-    for (const candidate of deduped) {
-      try {
-        await tx.job.create({
-          data: candidate
-        });
-        created += 1;
-      } catch (error) {
-        if (isUniqueConstraintError(error)) {
-          uniqueConstraintSkips += 1;
-          continue;
-        }
-
-        console.error("Sync ingestion persistence failed.", {
-          source: candidate.source,
-          applicationUrl: candidate.applicationUrl,
-          error
-        });
-
-        throw error;
-      }
-    }
-  });
-
-  if (uniqueConstraintSkips > 0) {
-    console.info("Sync ingestion skipped duplicates due to unique constraint.", {
-      uniqueConstraintSkips
-    });
-  }
+  await markSyncComplete(completedAt);
 
   return {
     discovered,
