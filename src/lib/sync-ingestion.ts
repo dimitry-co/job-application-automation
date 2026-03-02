@@ -22,6 +22,14 @@ function buildCandidateKey(source: JobSource, applicationUrl: string): string {
   return `${source}:${applicationUrl}`;
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+
+  return (error as { code?: string }).code === "P2002";
+}
+
 function coerceDatePosted(datePosted: Date): Date {
   return Number.isNaN(datePosted.getTime()) ? new Date() : datePosted;
 }
@@ -64,37 +72,23 @@ export async function ingestSWEListJobs(maxResults = 25): Promise<SyncIngestionR
     return { discovered, created: 0, skipped: discovered };
   }
 
-  const existingJobs = await prisma.job.findMany({
-    where: {
-      OR: deduped.map((job) => ({
-        applicationUrl: job.applicationUrl,
-        source: job.source
-      }))
-    },
-    select: {
-      applicationUrl: true,
-      source: true
-    }
-  });
-
-  const existingKeys = new Set(
-    existingJobs.map((job) =>
-      buildCandidateKey(job.source, normalizeApplicationUrl(job.applicationUrl))
-    )
+  const outcomes = await Promise.all(
+    deduped.map(async (candidate) => {
+      try {
+        await prisma.job.create({
+          data: candidate
+        });
+        return "created";
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          return "skipped";
+        }
+        throw error;
+      }
+    })
   );
 
-  const toCreate = deduped.filter(
-    (candidate) => !existingKeys.has(buildCandidateKey(candidate.source, candidate.applicationUrl))
-  );
-
-  const created =
-    toCreate.length === 0
-      ? 0
-      : (
-          await prisma.job.createMany({
-            data: toCreate
-          })
-        ).count;
+  const created = outcomes.filter((outcome) => outcome === "created").length;
 
   return {
     discovered,

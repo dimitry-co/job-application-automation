@@ -59,6 +59,7 @@ model Job {
   @@index([status])
   @@index([source])
   @@index([dateDiscovered])
+  @@unique([source, applicationUrl])
 }
 
 model Application {

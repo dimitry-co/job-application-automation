@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { SWEListEmail } from "@/lib/gmail";
 
-const { getSWEListEmailsMock, findManyMock, createManyMock } = vi.hoisted(() => ({
+const { getSWEListEmailsMock, createMock } = vi.hoisted(() => ({
   getSWEListEmailsMock: vi.fn(),
-  findManyMock: vi.fn(),
-  createManyMock: vi.fn()
+  createMock: vi.fn()
 }));
 
 vi.mock("@/lib/gmail", () => ({
@@ -14,8 +13,7 @@ vi.mock("@/lib/gmail", () => ({
 vi.mock("@/lib/db", () => ({
   prisma: {
     job: {
-      findMany: findManyMock,
-      createMany: createManyMock
+      create: createMock
     }
   }
 }));
@@ -62,39 +60,47 @@ describe("ingestSWEListJobs", () => {
       })
     ]);
 
-    findManyMock.mockResolvedValue([
-      {
-        applicationUrl: "https://existing.dev/apply",
-        source: "new_grad"
+    createMock.mockImplementation(async ({ data }: { data: { applicationUrl: string } }) => {
+      if (data.applicationUrl === "https://existing.dev/apply") {
+        throw { code: "P2002" };
       }
-    ]);
-    createManyMock.mockResolvedValue({ count: 3 });
+      return { id: "created" };
+    });
 
     const result = await ingestSWEListJobs();
 
-    expect(findManyMock).toHaveBeenCalledTimes(1);
-    expect(createManyMock).toHaveBeenCalledTimes(1);
-    expect(createManyMock).toHaveBeenCalledWith({
-      data: expect.arrayContaining([
-        expect.objectContaining({
-          company: "New Co",
-          applicationUrl: "https://newco.dev/apply",
-          source: "new_grad",
-          status: "new"
-        }),
-        expect.objectContaining({
-          company: "New Co",
-          applicationUrl: "https://newco.dev/apply",
-          source: "internship",
-          status: "new"
-        }),
-        expect.objectContaining({
-          company: "Another Co",
-          applicationUrl: "https://another.dev/apply",
-          source: "internship",
-          status: "new"
-        })
-      ])
+    expect(createMock).toHaveBeenCalledTimes(4);
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        company: "Existing Co",
+        applicationUrl: "https://existing.dev/apply",
+        source: "new_grad",
+        status: "new"
+      })
+    });
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        company: "New Co",
+        applicationUrl: "https://newco.dev/apply",
+        source: "new_grad",
+        status: "new"
+      })
+    });
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        company: "New Co",
+        applicationUrl: "https://newco.dev/apply",
+        source: "internship",
+        status: "new"
+      })
+    });
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        company: "Another Co",
+        applicationUrl: "https://another.dev/apply",
+        source: "internship",
+        status: "new"
+      })
     });
 
     expect(result).toEqual({
@@ -113,12 +119,23 @@ describe("ingestSWEListJobs", () => {
 
     const result = await ingestSWEListJobs();
 
-    expect(findManyMock).not.toHaveBeenCalled();
-    expect(createManyMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
     expect(result).toEqual({
       discovered: 0,
       created: 0,
       skipped: 0
     });
+  });
+
+  test("rethrows non-unique database errors", async () => {
+    getSWEListEmailsMock.mockResolvedValue([
+      createEmail({
+        html: '<a href="https://broken.dev/apply">Broken Co: SWE</a> Remote'
+      })
+    ]);
+
+    createMock.mockRejectedValue(new Error("database unavailable"));
+
+    await expect(ingestSWEListJobs()).rejects.toThrow("database unavailable");
   });
 });
