@@ -22,6 +22,14 @@ function buildCandidateKey(source: JobSource, applicationUrl: string): string {
   return `${source}:${applicationUrl}`;
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+
+  return (error as { code?: string }).code === "P2002";
+}
+
 function coerceDatePosted(datePosted: Date): Date {
   return Number.isNaN(datePosted.getTime()) ? new Date() : datePosted;
 }
@@ -55,19 +63,8 @@ async function markSyncComplete(lastSyncedAt: Date): Promise<void> {
   });
 }
 
-function buildCreateManyArgs(
-  data: ReturnType<typeof toPersistenceRecord>[]
-): Parameters<typeof prisma.job.createMany>[0] {
-  return {
-    data,
-    // We intentionally include skipDuplicates for idempotent sync writes.
-    skipDuplicates: true
-  } as unknown as Parameters<typeof prisma.job.createMany>[0];
-}
-
 export async function ingestSWEListJobs(): Promise<SyncIngestionResult> {
   const syncState = await prisma.emailSyncState.findUnique({
-    // find the sync state to check if the sync is incremental. it re
     where: { id: SYNC_STATE_SINGLETON_ID }
   });
   const isIncrementalSync = Boolean(syncState);
@@ -107,7 +104,23 @@ export async function ingestSWEListJobs(): Promise<SyncIngestionResult> {
     return { discovered, created: 0, skipped: discovered };
   }
 
-  const created = (await prisma.job.createMany(buildCreateManyArgs(deduped))).count;
+  let created = 0;
+
+  await prisma.$transaction(async (tx) => {
+    for (const candidate of deduped) {
+      try {
+        await tx.job.create({
+          data: candidate
+        });
+        created += 1;
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+  });
 
   await markSyncComplete(completedAt);
 

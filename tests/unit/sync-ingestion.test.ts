@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { SWEListEmail } from "@/lib/gmail";
 
-const { getSWEListEmailsMock, findUniqueMock, upsertMock, createManyMock } = vi.hoisted(() => ({
-  getSWEListEmailsMock: vi.fn(),
-  findUniqueMock: vi.fn(),
-  upsertMock: vi.fn(),
-  createManyMock: vi.fn()
-}));
+const { getSWEListEmailsMock, findUniqueMock, upsertMock, transactionMock, createMock } =
+  vi.hoisted(() => ({
+    getSWEListEmailsMock: vi.fn(),
+    findUniqueMock: vi.fn(),
+    upsertMock: vi.fn(),
+    transactionMock: vi.fn(),
+    createMock: vi.fn()
+  }));
 
 vi.mock("@/lib/gmail", () => ({
   getSWEListEmails: getSWEListEmailsMock
@@ -18,9 +20,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: findUniqueMock,
       upsert: upsertMock
     },
-    job: {
-      createMany: createManyMock
-    }
+    $transaction: transactionMock
   }
 }));
 
@@ -49,10 +49,16 @@ describe("ingestSWEListJobs", () => {
       lastSyncedAt: new Date("2026-02-20T00:00:00.000Z"),
       lastHistoryId: null
     });
-    createManyMock.mockResolvedValue({ count: 0 });
+    transactionMock.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        job: {
+          create: createMock
+        }
+      })
+    );
   });
 
-  test("persists parsed jobs with createMany + skipDuplicates", async () => {
+  test("persists parsed jobs and skips unique conflicts in transaction loop", async () => {
     getSWEListEmailsMock.mockResolvedValue([
       createEmail({
         subject: "102 New Jobs Posted Today",
@@ -72,7 +78,12 @@ describe("ingestSWEListJobs", () => {
         ].join("\n")
       })
     ]);
-    createManyMock.mockResolvedValue({ count: 3 });
+    createMock.mockImplementation(async ({ data }: { data: { applicationUrl: string } }) => {
+      if (data.applicationUrl === "https://existing.dev/apply") {
+        throw { code: "P2002" };
+      }
+      return { id: "created" };
+    });
 
     const result = await ingestSWEListJobs();
 
@@ -80,35 +91,39 @@ describe("ingestSWEListJobs", () => {
       maxResults: 5,
       afterDate: undefined
     });
-    expect(createManyMock).toHaveBeenCalledTimes(1);
-    expect(createManyMock).toHaveBeenCalledWith({
-      data: expect.arrayContaining([
-        expect.objectContaining({
-          company: "Existing Co",
-          applicationUrl: "https://existing.dev/apply",
-          source: "new_grad",
-          status: "new"
-        }),
-        expect.objectContaining({
-          company: "New Co",
-          applicationUrl: "https://newco.dev/apply",
-          source: "new_grad",
-          status: "new"
-        }),
-        expect.objectContaining({
-          company: "New Co",
-          applicationUrl: "https://newco.dev/apply",
-          source: "internship",
-          status: "new"
-        }),
-        expect.objectContaining({
-          company: "Another Co",
-          applicationUrl: "https://another.dev/apply",
-          source: "internship",
-          status: "new"
-        })
-      ]),
-      skipDuplicates: true
+    expect(transactionMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledTimes(4);
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        company: "Existing Co",
+        applicationUrl: "https://existing.dev/apply",
+        source: "new_grad",
+        status: "new"
+      })
+    });
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        company: "New Co",
+        applicationUrl: "https://newco.dev/apply",
+        source: "new_grad",
+        status: "new"
+      })
+    });
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        company: "New Co",
+        applicationUrl: "https://newco.dev/apply",
+        source: "internship",
+        status: "new"
+      })
+    });
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        company: "Another Co",
+        applicationUrl: "https://another.dev/apply",
+        source: "internship",
+        status: "new"
+      })
     });
     expect(upsertMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
@@ -140,7 +155,7 @@ describe("ingestSWEListJobs", () => {
         html: '<a href="https://third.dev/apply">Third Co: SWE</a> Remote'
       })
     ]);
-    createManyMock.mockResolvedValue({ count: 2 });
+    createMock.mockResolvedValue({ id: "created" });
 
     const result = await ingestSWEListJobs();
 
@@ -148,24 +163,18 @@ describe("ingestSWEListJobs", () => {
       maxResults: 5,
       afterDate: lastSyncedAt
     });
-    expect(createManyMock).toHaveBeenCalledWith({
-      data: expect.arrayContaining([
-        expect.objectContaining({ applicationUrl: "https://newest.dev/apply" }),
-        expect.objectContaining({ applicationUrl: "https://second.dev/apply" })
-      ]),
-      skipDuplicates: true
-    });
-    expect(createManyMock).not.toHaveBeenCalledWith({
-      data: expect.arrayContaining([
-        expect.objectContaining({ applicationUrl: "https://third.dev/apply" })
-      ]),
-      skipDuplicates: true
-    });
+    expect(transactionMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledTimes(2);
+    const createdUrls = createMock.mock.calls.map(
+      (call) => (call[0] as { data: { applicationUrl: string } }).data.applicationUrl
+    );
+    expect(createdUrls).toEqual(["https://newest.dev/apply", "https://second.dev/apply"]);
     expect(result).toEqual({
       discovered: 2,
       created: 2,
       skipped: 0
     });
+    expect(upsertMock).toHaveBeenCalledTimes(1);
   });
 
   test("updates sync state even when no candidate jobs are parsed", async () => {
@@ -177,7 +186,8 @@ describe("ingestSWEListJobs", () => {
 
     const result = await ingestSWEListJobs();
 
-    expect(createManyMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
     expect(upsertMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       discovered: 0,
@@ -186,13 +196,13 @@ describe("ingestSWEListJobs", () => {
     });
   });
 
-  test("rethrows createMany errors and does not update sync state", async () => {
+  test("rethrows non-unique database errors and does not update sync state", async () => {
     getSWEListEmailsMock.mockResolvedValue([
       createEmail({
         html: '<a href="https://broken.dev/apply">Broken Co: SWE</a> Remote'
       })
     ]);
-    createManyMock.mockRejectedValue(new Error("database unavailable"));
+    createMock.mockRejectedValue(new Error("database unavailable"));
 
     await expect(ingestSWEListJobs()).rejects.toThrow("database unavailable");
     expect(upsertMock).not.toHaveBeenCalled();
