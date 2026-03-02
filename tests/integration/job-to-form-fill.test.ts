@@ -12,6 +12,7 @@ const { autoFillApplicationMock, mockPrisma } = vi.hoisted(() => {
   const prisma = {
     job: {
       findUnique: vi.fn(),
+      updateMany: vi.fn(),
       update: vi.fn()
     }
   };
@@ -62,7 +63,12 @@ function formFillParams(id: string): { params: Promise<{ id: string }> } {
 
 describe("job-to-form-fill integration", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockPrisma.job.findUnique.mockReset();
+    mockPrisma.job.updateMany.mockReset();
+    mockPrisma.job.update.mockReset();
+    autoFillApplicationMock.mockReset();
+
+    mockPrisma.job.updateMany.mockResolvedValue({ count: 1 });
   });
 
   test("returns 404 when job does not exist", async () => {
@@ -104,6 +110,52 @@ describe("job-to-form-fill integration", () => {
     expect(payload.ok).toBe(false);
     expect(payload.error).toContain("must be in a form-fill-ready state");
     expect(autoFillApplicationMock).not.toHaveBeenCalled();
+    expect(mockPrisma.job.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.job.update).not.toHaveBeenCalled();
+  });
+
+  test("returns 409 when a form-fill run is already in progress", async () => {
+    mockPrisma.job.findUnique.mockResolvedValue(
+      buildJob({
+        status: PrismaJobStatus.form_filling
+      })
+    );
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/form-fill/job-1", {
+        method: "POST"
+      }),
+      formFillParams("job-1")
+    );
+    const payload = (await response.json()) as { ok: boolean; error: string };
+
+    expect(response.status).toBe(409);
+    expect(payload).toEqual({
+      ok: false,
+      error: 'Job "job-1" already has a form-fill run in progress.'
+    });
+    expect(mockPrisma.job.updateMany).not.toHaveBeenCalled();
+    expect(autoFillApplicationMock).not.toHaveBeenCalled();
+  });
+
+  test("returns 409 when concurrent state change prevents claiming the run", async () => {
+    mockPrisma.job.findUnique.mockResolvedValue(buildJob());
+    mockPrisma.job.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/form-fill/job-1", {
+        method: "POST"
+      }),
+      formFillParams("job-1")
+    );
+    const payload = (await response.json()) as { ok: boolean; error: string };
+
+    expect(response.status).toBe(409);
+    expect(payload).toEqual({
+      ok: false,
+      error: 'Job "job-1" state changed. Refresh and retry form fill.'
+    });
+    expect(autoFillApplicationMock).not.toHaveBeenCalled();
     expect(mockPrisma.job.update).not.toHaveBeenCalled();
   });
 
@@ -118,14 +170,7 @@ describe("job-to-form-fill integration", () => {
     });
 
     mockPrisma.job.findUnique.mockResolvedValue(existingJob);
-    mockPrisma.job.update
-      .mockResolvedValueOnce(
-        buildJob({
-          status: PrismaJobStatus.form_filling,
-          formFillStatus: PrismaFormFillStatus.in_progress
-        })
-      )
-      .mockResolvedValueOnce(finalJob);
+    mockPrisma.job.update.mockResolvedValueOnce(finalJob);
     autoFillApplicationMock.mockResolvedValue({
       stoppedAtSubmit: true,
       screenshotPaths: ["artifacts/form-fill-1717171717000.png"],
@@ -148,9 +193,10 @@ describe("job-to-form-fill integration", () => {
     };
 
     expect(response.status).toBe(200);
-    expect(mockPrisma.job.update).toHaveBeenNthCalledWith(1, {
+    expect(mockPrisma.job.updateMany).toHaveBeenCalledWith({
       where: {
-        id: "job-1"
+        id: "job-1",
+        status: PrismaJobStatus.ready
       },
       data: {
         status: PrismaJobStatus.form_filling,
@@ -158,7 +204,7 @@ describe("job-to-form-fill integration", () => {
       }
     });
     expect(autoFillApplicationMock).toHaveBeenCalledWith("https://jobs.example.com/opening");
-    expect(mockPrisma.job.update).toHaveBeenNthCalledWith(2, {
+    expect(mockPrisma.job.update).toHaveBeenCalledWith({
       where: {
         id: "job-1"
       },
@@ -180,19 +226,12 @@ describe("job-to-form-fill integration", () => {
 
   test("persists failed state and returns safe non-200 error when autofill fails", async () => {
     mockPrisma.job.findUnique.mockResolvedValue(buildJob());
-    mockPrisma.job.update
-      .mockResolvedValueOnce(
-        buildJob({
-          status: PrismaJobStatus.form_filling,
-          formFillStatus: PrismaFormFillStatus.in_progress
-        })
-      )
-      .mockResolvedValueOnce(
-        buildJob({
-          status: PrismaJobStatus.ready,
-          formFillStatus: PrismaFormFillStatus.failed
-        })
-      );
+    mockPrisma.job.update.mockResolvedValueOnce(
+      buildJob({
+        status: PrismaJobStatus.ready,
+        formFillStatus: PrismaFormFillStatus.failed
+      })
+    );
     autoFillApplicationMock.mockRejectedValue(new Error("Playwright selector timed out"));
 
     const response = await POST(
@@ -211,7 +250,17 @@ describe("job-to-form-fill integration", () => {
     expect(payload.ok).toBe(false);
     expect(payload.error).toBe("Form fill execution failed. Review screenshots/logs and retry.");
     expect(payload.error).not.toContain("selector timed out");
-    expect(mockPrisma.job.update).toHaveBeenNthCalledWith(2, {
+    expect(mockPrisma.job.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "job-1",
+        status: PrismaJobStatus.ready
+      },
+      data: {
+        status: PrismaJobStatus.form_filling,
+        formFillStatus: PrismaFormFillStatus.in_progress
+      }
+    });
+    expect(mockPrisma.job.update).toHaveBeenCalledWith({
       where: {
         id: "job-1"
       },

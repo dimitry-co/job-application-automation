@@ -27,6 +27,16 @@ export async function POST(_: NextRequest, { params }: RouteContext) {
   }
 
   const currentStatus = toApiJobStatus(existingJob.status);
+  if (currentStatus === "form-filling") {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Job "${id}" already has a form-fill run in progress.`
+      },
+      { status: 409 }
+    );
+  }
+
   if (!canTransitionStatus(currentStatus, "form-filling")) {
     return NextResponse.json(
       {
@@ -37,15 +47,26 @@ export async function POST(_: NextRequest, { params }: RouteContext) {
     );
   }
 
-  await prisma.job.update({
+  const claimResult = await prisma.job.updateMany({
     where: {
-      id
+      id,
+      status: existingJob.status
     },
     data: {
       status: PrismaJobStatus.form_filling,
       formFillStatus: PrismaFormFillStatus.in_progress
     }
   });
+
+  if (claimResult.count === 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Job "${id}" state changed. Refresh and retry form fill.`
+      },
+      { status: 409 }
+    );
+  }
 
   try {
     const formFill = await autoFillApplication(existingJob.applicationUrl);
@@ -65,7 +86,12 @@ export async function POST(_: NextRequest, { params }: RouteContext) {
       job: toJobDTO(updatedJob),
       formFill
     });
-  } catch {
+  } catch (error) {
+    console.error("Form-fill execution failed", {
+      jobId: id,
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
+
     const failedJob = await prisma.job.update({
       where: {
         id

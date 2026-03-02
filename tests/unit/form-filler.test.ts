@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const { closeMock, countMock, gotoMock, launchMock, newPageMock, screenshotMock, urlMock } =
   vi.hoisted(() => {
@@ -48,8 +48,12 @@ describe("autoFillApplication", () => {
     urlMock.mockReturnValue("https://jobs.example.com/apply");
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test("captures screenshot and reports submit stopping point", async () => {
-    vi.spyOn(Date, "now").mockReturnValue(1_717_171_717_000);
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1_717_171_717_000);
 
     const result = await autoFillApplication("https://jobs.example.com/opening");
 
@@ -68,6 +72,7 @@ describe("autoFillApplication", () => {
       finalUrl: "https://jobs.example.com/apply"
     });
     expect(closeMock).toHaveBeenCalledTimes(1);
+    dateNowSpy.mockRestore();
   });
 
   test("keeps submit safety signal false when no submit button is visible", async () => {
