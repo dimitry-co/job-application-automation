@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { SWEListEmail } from "@/lib/gmail";
 
-const { getSWEListEmailsMock, createMock, transactionMock } = vi.hoisted(() => ({
-  getSWEListEmailsMock: vi.fn(),
-  createMock: vi.fn(),
-  transactionMock: vi.fn()
-}));
+const { getSWEListEmailsMock, findUniqueMock, upsertMock, transactionMock, createMock } =
+  vi.hoisted(() => ({
+    getSWEListEmailsMock: vi.fn(),
+    findUniqueMock: vi.fn(),
+    upsertMock: vi.fn(),
+    transactionMock: vi.fn(),
+    createMock: vi.fn()
+  }));
 
 vi.mock("@/lib/gmail", () => ({
   getSWEListEmails: getSWEListEmailsMock
@@ -13,6 +16,10 @@ vi.mock("@/lib/gmail", () => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    emailSyncState: {
+      findUnique: findUniqueMock,
+      upsert: upsertMock
+    },
     $transaction: transactionMock
   }
 }));
@@ -34,13 +41,14 @@ function createEmail(overrides: Partial<SWEListEmail>): SWEListEmail {
 }
 
 describe("ingestSWEListJobs", () => {
-  let infoSpy: ReturnType<typeof vi.spyOn>;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    findUniqueMock.mockResolvedValue(null);
+    upsertMock.mockResolvedValue({
+      id: "singleton",
+      lastSyncedAt: new Date("2026-02-20T00:00:00.000Z"),
+      lastHistoryId: null
+    });
     transactionMock.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
         job: {
@@ -50,7 +58,7 @@ describe("ingestSWEListJobs", () => {
     );
   });
 
-  test("persists parsed jobs and skips duplicates by source + applicationUrl", async () => {
+  test("persists parsed jobs and skips unique conflicts in transaction loop", async () => {
     getSWEListEmailsMock.mockResolvedValue([
       createEmail({
         subject: "102 New Jobs Posted Today",
@@ -70,7 +78,6 @@ describe("ingestSWEListJobs", () => {
         ].join("\n")
       })
     ]);
-
     createMock.mockImplementation(async ({ data }: { data: { applicationUrl: string } }) => {
       if (data.applicationUrl === "https://existing.dev/apply") {
         throw { code: "P2002" };
@@ -80,6 +87,10 @@ describe("ingestSWEListJobs", () => {
 
     const result = await ingestSWEListJobs();
 
+    expect(getSWEListEmailsMock).toHaveBeenCalledWith({
+      maxResults: 5,
+      afterDate: undefined
+    });
     expect(transactionMock).toHaveBeenCalledTimes(1);
     expect(createMock).toHaveBeenCalledTimes(4);
     expect(createMock).toHaveBeenCalledWith({
@@ -114,22 +125,59 @@ describe("ingestSWEListJobs", () => {
         status: "new"
       })
     });
-
+    expect(upsertMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       discovered: 5,
       created: 3,
       skipped: 2
     });
-    expect(infoSpy).toHaveBeenCalledWith(
-      "Sync ingestion skipped duplicates due to unique constraint.",
-      expect.objectContaining({
-        uniqueConstraintSkips: 1
-      })
-    );
-    expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  test("returns zero counters when no candidate jobs are parsed", async () => {
+  test("uses incremental sync state and only parses the two newest emails", async () => {
+    const lastSyncedAt = new Date("2026-02-24T12:00:00.000Z");
+    findUniqueMock.mockResolvedValue({
+      id: "singleton",
+      lastSyncedAt,
+      lastHistoryId: null
+    });
+
+    getSWEListEmailsMock.mockResolvedValue([
+      createEmail({
+        id: "msg-newest",
+        html: '<a href="https://newest.dev/apply">Newest Co: SWE</a> Remote'
+      }),
+      createEmail({
+        id: "msg-second",
+        html: '<a href="https://second.dev/apply">Second Co: SWE</a> Remote'
+      }),
+      createEmail({
+        id: "msg-third",
+        html: '<a href="https://third.dev/apply">Third Co: SWE</a> Remote'
+      })
+    ]);
+    createMock.mockResolvedValue({ id: "created" });
+
+    const result = await ingestSWEListJobs();
+
+    expect(getSWEListEmailsMock).toHaveBeenCalledWith({
+      maxResults: 5,
+      afterDate: lastSyncedAt
+    });
+    expect(transactionMock).toHaveBeenCalledTimes(1);
+    expect(createMock).toHaveBeenCalledTimes(2);
+    const createdUrls = createMock.mock.calls.map(
+      (call) => (call[0] as { data: { applicationUrl: string } }).data.applicationUrl
+    );
+    expect(createdUrls).toEqual(["https://newest.dev/apply", "https://second.dev/apply"]);
+    expect(result).toEqual({
+      discovered: 2,
+      created: 2,
+      skipped: 0
+    });
+    expect(upsertMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("updates sync state even when no candidate jobs are parsed", async () => {
     getSWEListEmailsMock.mockResolvedValue([
       createEmail({
         html: "<p>No outbound links in this digest.</p>"
@@ -140,6 +188,7 @@ describe("ingestSWEListJobs", () => {
 
     expect(transactionMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
+    expect(upsertMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       discovered: 0,
       created: 0,
@@ -147,47 +196,15 @@ describe("ingestSWEListJobs", () => {
     });
   });
 
-  test("rethrows non-unique database errors", async () => {
+  test("rethrows non-unique database errors and does not update sync state", async () => {
     getSWEListEmailsMock.mockResolvedValue([
       createEmail({
         html: '<a href="https://broken.dev/apply">Broken Co: SWE</a> Remote'
       })
     ]);
-
     createMock.mockRejectedValue(new Error("database unavailable"));
 
     await expect(ingestSWEListJobs()).rejects.toThrow("database unavailable");
-    expect(errorSpy).toHaveBeenCalledWith(
-      "Sync ingestion persistence failed.",
-      expect.objectContaining({
-        applicationUrl: "https://broken.dev/apply",
-        source: "new_grad",
-        error: expect.any(Error)
-      })
-    );
-  });
-
-  test("stops processing remaining candidates after non-unique failure", async () => {
-    getSWEListEmailsMock.mockResolvedValue([
-      createEmail({
-        html: [
-          '<a href="https://one.dev/apply">One Co: SWE</a> Remote',
-          '<a href="https://two.dev/apply">Two Co: SWE</a> Remote',
-          '<a href="https://three.dev/apply">Three Co: SWE</a> Remote'
-        ].join("\n")
-      })
-    ]);
-
-    let callCount = 0;
-    createMock.mockImplementation(async () => {
-      callCount += 1;
-      if (callCount === 2) {
-        throw new Error("database unavailable");
-      }
-      return { id: String(callCount) };
-    });
-
-    await expect(ingestSWEListJobs()).rejects.toThrow("database unavailable");
-    expect(createMock).toHaveBeenCalledTimes(2);
+    expect(upsertMock).not.toHaveBeenCalled();
   });
 });

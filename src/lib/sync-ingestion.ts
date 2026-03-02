@@ -46,14 +46,45 @@ function toPersistenceRecord(candidate: ParsedSWEListJob) {
   };
 }
 
-export async function ingestSWEListJobs(maxResults = 25): Promise<SyncIngestionResult> {
-  const emails = await getSWEListEmails(maxResults);
+const SYNC_STATE_SINGLETON_ID = "singleton";
+const INCREMENTAL_SYNC_MAX_RESULTS = 5;
+const INCREMENTAL_EMAILS_TO_PROCESS = 2;
+
+async function markSyncComplete(lastSyncedAt: Date): Promise<void> {
+  await prisma.emailSyncState.upsert({
+    where: { id: SYNC_STATE_SINGLETON_ID },
+    create: {
+      id: SYNC_STATE_SINGLETON_ID,
+      lastSyncedAt
+    },
+    update: {
+      lastSyncedAt
+    }
+  });
+}
+
+export async function ingestSWEListJobs(): Promise<SyncIngestionResult> {
+  const syncState = await prisma.emailSyncState.findUnique({
+    where: { id: SYNC_STATE_SINGLETON_ID }
+  });
+  const isIncrementalSync = Boolean(syncState);
+
+  const fetchedEmails = await getSWEListEmails({
+    maxResults: INCREMENTAL_SYNC_MAX_RESULTS,
+    afterDate: syncState?.lastSyncedAt
+  });
+  const emails = isIncrementalSync
+    ? fetchedEmails.slice(0, INCREMENTAL_EMAILS_TO_PROCESS)
+    : fetchedEmails;
+
   const parsedCandidates = emails.flatMap((email) =>
     parseSWEListHtml(email.html, email.subject, email.datePosted)
   );
+  const completedAt = new Date();
 
   const discovered = parsedCandidates.length;
   if (discovered === 0) {
+    await markSyncComplete(completedAt);
     return { discovered: 0, created: 0, skipped: 0 };
   }
 
@@ -69,11 +100,11 @@ export async function ingestSWEListJobs(maxResults = 25): Promise<SyncIngestionR
 
   const deduped = Array.from(uniqueCandidates.values());
   if (deduped.length === 0) {
+    await markSyncComplete(completedAt);
     return { discovered, created: 0, skipped: discovered };
   }
 
   let created = 0;
-  let uniqueConstraintSkips = 0;
 
   await prisma.$transaction(async (tx) => {
     for (const candidate of deduped) {
@@ -84,26 +115,14 @@ export async function ingestSWEListJobs(maxResults = 25): Promise<SyncIngestionR
         created += 1;
       } catch (error) {
         if (isUniqueConstraintError(error)) {
-          uniqueConstraintSkips += 1;
           continue;
         }
-
-        console.error("Sync ingestion persistence failed.", {
-          source: candidate.source,
-          applicationUrl: candidate.applicationUrl,
-          error
-        });
-
         throw error;
       }
     }
   });
 
-  if (uniqueConstraintSkips > 0) {
-    console.info("Sync ingestion skipped duplicates due to unique constraint.", {
-      uniqueConstraintSkips
-    });
-  }
+  await markSyncComplete(completedAt);
 
   return {
     discovered,

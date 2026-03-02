@@ -19,6 +19,11 @@ export interface SWEListEmail {
   headers: Record<string, string>;
 }
 
+export interface SWEListEmailQueryOptions {
+  maxResults?: number;
+  afterDate?: Date;
+}
+
 function getEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -231,11 +236,25 @@ export function buildGmailClient(): gmail_v1.Gmail {
   return google.gmail({ version: "v1", auth: oauth2Client });
 }
 
-export async function getSWEListEmails(maxResults = 25): Promise<SWEListEmail[]> {
+function buildSWEListQuery(afterDate?: Date): string {
+  const queryParts = ["from:noreply@swelist.com"];
+
+  if (afterDate && !Number.isNaN(afterDate.getTime())) {
+    const epochSeconds = Math.floor(afterDate.getTime() / 1000);
+    queryParts.push(`after:${epochSeconds}`);
+  }
+
+  return queryParts.join(" ");
+}
+
+export async function getSWEListEmails(
+  options: SWEListEmailQueryOptions = {}
+): Promise<SWEListEmail[]> {
+  const maxResults = options.maxResults ?? 25;
   const gmail = buildGmailClient();
   const listResponse = await gmail.users.messages.list({
     userId: "me",
-    q: "from:noreply@swelist.com",
+    q: buildSWEListQuery(options.afterDate),
     maxResults
   });
 
