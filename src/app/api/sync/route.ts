@@ -6,19 +6,27 @@ export async function POST() {
 
   try {
     const result = await ingestSWEListJobs();
+    console.info("Sync ingestion completed.", {
+      startedAt,
+      ...result
+    });
+
     return NextResponse.json({
       ok: true,
       startedAt,
       ...result
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown sync ingestion error";
+    console.error("Sync ingestion failed.", {
+      startedAt,
+      error
+    });
 
     return NextResponse.json(
       {
         ok: false,
         startedAt,
-        error: message
+        error: "Sync ingestion failed."
       },
       { status: 500 }
     );
