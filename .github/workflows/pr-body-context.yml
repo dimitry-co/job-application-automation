@@ -1,0 +1,153 @@
+name: PR Body Context
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate-pr-body:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate PR body has context
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const template = fs
+            .readFileSync(".github/pull_request_template.md", "utf8")
+            .replace(/\r\n/g, "\n")
+            .trim();
+          const body = (process.env.PR_BODY ?? "").replace(/\r\n/g, "\n").trim();
+
+          function fail(message) {
+            console.error(message);
+            process.exit(1);
+          }
+
+          function isBlank(value) {
+            return value === "" || value === "N/A" || value === "None" || value === "TBD";
+          }
+
+          function getSection(markdown, title) {
+            const lines = markdown.split("\n");
+            const startIndex = lines.findIndex((line) => line.trim() === `## ${title}`);
+            if (startIndex === -1) {
+              return null;
+            }
+
+            let endIndex = lines.length;
+            for (let index = startIndex + 1; index < lines.length; index += 1) {
+              if (/^##\s+/.test(lines[index].trim())) {
+                endIndex = index;
+                break;
+              }
+            }
+
+            return lines.slice(startIndex + 1, endIndex).join("\n").trim();
+          }
+
+          function getSummaryValue(summarySection, label) {
+            const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const match = summarySection.match(new RegExp(`^-\\s*${escapedLabel}:\\s*(.*)$`, "mi"));
+            if (!match) {
+              return null;
+            }
+
+            return match[1].trim();
+          }
+
+          function countChecked(section) {
+            return section
+              .split("\n")
+              .map((line) => line.trim())
+              .filter((line) => /^-\s*\[[xX]\]\s+/.test(line)).length;
+          }
+
+          if (!body) {
+            fail("PR body is empty. Add at least one section with useful context.");
+          }
+
+          if (body === template) {
+            fail("PR body still matches the untouched template. Fill in relevant sections.");
+          }
+
+          const summary = getSection(body, "Summary");
+          if (!summary) {
+            fail("Missing required section: Summary.");
+          }
+
+          const summaryFields = [
+            "Problem",
+            "Why it matters",
+            "What changed",
+            "What did NOT change (scope boundary)"
+          ];
+
+          for (const field of summaryFields) {
+            const value = getSummaryValue(summary, field);
+            if (value === null || isBlank(value)) {
+              fail(`Summary field "${field}" is required and must be filled.`);
+            }
+          }
+
+          const changeType = getSection(body, "Change Type (select all)");
+          if (!changeType) {
+            fail("Missing required section: Change Type (select all).");
+          }
+
+          if (countChecked(changeType) === 0) {
+            fail("Change Type must have at least one checked item.");
+          }
+
+          const scope = getSection(body, "Scope (select all touched areas)");
+          if (!scope) {
+            fail("Missing required section: Scope (select all touched areas).");
+          }
+
+          if (countChecked(scope) === 0) {
+            fail("Scope must have at least one checked item.");
+          }
+
+          const risks = getSection(body, "Risks and Mitigations");
+          if (!risks) {
+            fail("Missing required section: Risks and Mitigations.");
+          }
+
+          const riskLines = risks
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
+
+          const hasNone = riskLines.includes("None");
+          if (!hasNone) {
+            const riskValue = riskLines
+              .map((line) => line.match(/^-\s*Risk:\s*(.*)$/i))
+              .find(Boolean)?.[1]?.trim();
+            const mitigationValue = riskLines
+              .map((line) => line.match(/^-\s*Mitigation:\s*(.*)$/i))
+              .find(Boolean)?.[1]?.trim();
+
+            if (!riskValue || isBlank(riskValue)) {
+              fail(
+                "Risks and Mitigations must include `None` or a filled `- Risk: ...` entry."
+              );
+            }
+
+            if (!mitigationValue || isBlank(mitigationValue)) {
+              fail(
+                "Risks and Mitigations must include `None` or a filled `- Mitigation: ...` entry."
+              );
+            }
+          }
+
+          console.log("Required PR sections are filled and valid.");
+          NODE

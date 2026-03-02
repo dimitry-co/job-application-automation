@@ -35,15 +35,39 @@ if gh pr view --head "$branch" --json url >/dev/null 2>&1; then
 fi
 
 use_fill=1
+template_file=".github/pull_request_template.md"
+
+has_title=0
+has_body=0
+has_template=0
 for arg in "$@"; do
-  if [[ "$arg" == "--title" || "$arg" == "--body" || "$arg" == "--body-file" ]]; then
+  if [[ "$arg" == "--title" ]]; then
+    has_title=1
+  fi
+  if [[ "$arg" == "--body" || "$arg" == "--body-file" ]]; then
+    has_body=1
+  fi
+  if [[ "$arg" == "--template" ]]; then
+    has_template=1
+  fi
+  if [[ "$arg" == "--fill" || "$arg" == "--fill-first" || "$arg" == "--fill-verbose" ]]; then
     use_fill=0
   fi
 done
 
 cmd=(gh pr create --base main --head "$branch")
 if [[ "$use_fill" -eq 1 ]]; then
-  cmd+=(--fill)
+  if [[ "$has_title" -eq 0 ]]; then
+    cmd+=(--title "$(git log -1 --pretty=%s)")
+  fi
+
+  if [[ "$has_body" -eq 0 && "$has_template" -eq 0 ]]; then
+    if [[ ! -f "$template_file" ]]; then
+      echo "Missing PR template file: $template_file"
+      exit 1
+    fi
+    cmd+=(--body-file "$template_file")
+  fi
 fi
 cmd+=("$@")
 
