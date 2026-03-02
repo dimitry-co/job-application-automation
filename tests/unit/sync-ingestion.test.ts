@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import type { SWEListEmail } from "@/lib/gmail";
 
-const { getSWEListEmailsMock, createMock } = vi.hoisted(() => ({
+const { getSWEListEmailsMock, createMock, transactionMock } = vi.hoisted(() => ({
   getSWEListEmailsMock: vi.fn(),
-  createMock: vi.fn()
+  createMock: vi.fn(),
+  transactionMock: vi.fn()
 }));
 
 vi.mock("@/lib/gmail", () => ({
@@ -12,9 +13,7 @@ vi.mock("@/lib/gmail", () => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    job: {
-      create: createMock
-    }
+    $transaction: transactionMock
   }
 }));
 
@@ -35,8 +34,20 @@ function createEmail(overrides: Partial<SWEListEmail>): SWEListEmail {
 }
 
 describe("ingestSWEListJobs", () => {
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    transactionMock.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        job: {
+          create: createMock
+        }
+      })
+    );
   });
 
   test("persists parsed jobs and skips duplicates by source + applicationUrl", async () => {
@@ -69,6 +80,7 @@ describe("ingestSWEListJobs", () => {
 
     const result = await ingestSWEListJobs();
 
+    expect(transactionMock).toHaveBeenCalledTimes(1);
     expect(createMock).toHaveBeenCalledTimes(4);
     expect(createMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -108,6 +120,13 @@ describe("ingestSWEListJobs", () => {
       created: 3,
       skipped: 2
     });
+    expect(infoSpy).toHaveBeenCalledWith(
+      "Sync ingestion skipped duplicates due to unique constraint.",
+      expect.objectContaining({
+        uniqueConstraintSkips: 1
+      })
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   test("returns zero counters when no candidate jobs are parsed", async () => {
@@ -119,6 +138,7 @@ describe("ingestSWEListJobs", () => {
 
     const result = await ingestSWEListJobs();
 
+    expect(transactionMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(result).toEqual({
       discovered: 0,
@@ -137,5 +157,37 @@ describe("ingestSWEListJobs", () => {
     createMock.mockRejectedValue(new Error("database unavailable"));
 
     await expect(ingestSWEListJobs()).rejects.toThrow("database unavailable");
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Sync ingestion persistence failed.",
+      expect.objectContaining({
+        applicationUrl: "https://broken.dev/apply",
+        source: "new_grad",
+        error: expect.any(Error)
+      })
+    );
+  });
+
+  test("stops processing remaining candidates after non-unique failure", async () => {
+    getSWEListEmailsMock.mockResolvedValue([
+      createEmail({
+        html: [
+          '<a href="https://one.dev/apply">One Co: SWE</a> Remote',
+          '<a href="https://two.dev/apply">Two Co: SWE</a> Remote',
+          '<a href="https://three.dev/apply">Three Co: SWE</a> Remote'
+        ].join("\n")
+      })
+    ]);
+
+    let callCount = 0;
+    createMock.mockImplementation(async () => {
+      callCount += 1;
+      if (callCount === 2) {
+        throw new Error("database unavailable");
+      }
+      return { id: String(callCount) };
+    });
+
+    await expect(ingestSWEListJobs()).rejects.toThrow("database unavailable");
+    expect(createMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -72,23 +72,38 @@ export async function ingestSWEListJobs(maxResults = 25): Promise<SyncIngestionR
     return { discovered, created: 0, skipped: discovered };
   }
 
-  const outcomes = await Promise.all(
-    deduped.map(async (candidate) => {
+  let created = 0;
+  let uniqueConstraintSkips = 0;
+
+  await prisma.$transaction(async (tx) => {
+    for (const candidate of deduped) {
       try {
-        await prisma.job.create({
+        await tx.job.create({
           data: candidate
         });
-        return "created";
+        created += 1;
       } catch (error) {
         if (isUniqueConstraintError(error)) {
-          return "skipped";
+          uniqueConstraintSkips += 1;
+          continue;
         }
+
+        console.error("Sync ingestion persistence failed.", {
+          source: candidate.source,
+          applicationUrl: candidate.applicationUrl,
+          error
+        });
+
         throw error;
       }
-    })
-  );
+    }
+  });
 
-  const created = outcomes.filter((outcome) => outcome === "created").length;
+  if (uniqueConstraintSkips > 0) {
+    console.info("Sync ingestion skipped duplicates due to unique constraint.", {
+      uniqueConstraintSkips
+    });
+  }
 
   return {
     discovered,
