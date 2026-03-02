@@ -14,6 +14,7 @@ Load all personal data from `user-profile.local.md` when present; otherwise use 
 ## Landing Page
 
 In priority order:
+
 1. "Autofill with resume" → click, upload chosen resume PDF
 2. "Sign in with Google" -> use email from the active profile file
 3. Email + password login -> use credentials from the active profile file
@@ -62,11 +63,11 @@ Generate from resume + job description. Keep to **20-60 words, simple language**
 
 ## Errors
 
-| Scenario | Action |
-|----------|--------|
-| CAPTCHA | Pause, alert user |
-| Unsupported auth (SMS 2FA) | Pause, alert user |
-| "Already applied" | Stop, update status |
-| "Position closed" | Stop, update status |
-| Page timeout | Retry once, then alert |
-| Unknown field | Best judgment from resume + profile; skip if unsure |
+| Scenario                   | Action                                              |
+| -------------------------- | --------------------------------------------------- |
+| CAPTCHA                    | Pause, alert user                                   |
+| Unsupported auth (SMS 2FA) | Pause, alert user                                   |
+| "Already applied"          | Stop, update status                                 |
+| "Position closed"          | Stop, update status                                 |
+| Page timeout               | Retry once, then alert                              |
+| Unknown field              | Best judgment from resume + profile; skip if unsure |

@@ -63,7 +63,7 @@ This file is the single source of truth for Codex agents in this repository.
 
 ## Skills
 
-- Repo skill: `skills/job-application-form-filler/SKILL.md`
+- Repo skill: `.agents/skills/job-application-form-filler/SKILL.md`
 - Use it for browser form-filling tasks.
 - For profile data, prefer `user-profile.local.md` and fall back to `user-profile.md`.
 - Never click final Submit in automated form fill flows; stop for user review.
