@@ -22,6 +22,7 @@ type ProfileData = {
   source: string;
   firstName: string;
   lastName: string;
+  fullName: string;
   preferredName: string;
   email: string;
   phone: string;
@@ -39,6 +40,13 @@ type ProfileData = {
   graduation: string;
   password: string;
   resumePath: string;
+  legallyAuthorizedToWork: boolean;
+  requiresVisaSponsorship: boolean;
+  willingToRelocate: boolean;
+  relativeWorksAtCompany: boolean;
+  referral: boolean;
+  previouslyWorkedAtCompany: boolean;
+  currentEmployee: boolean;
 };
 
 type FormFillOutput = {
@@ -64,7 +72,8 @@ function normalizeCellValue(value: string | undefined): string {
   if (
     trimmed.length === 0 ||
     /\(leave blank(?: unless needed)?\)/i.test(trimmed) ||
-    /\(fill if required by portal\)/i.test(trimmed)
+    /\(fill if required by portal\)/i.test(trimmed) ||
+    /\(add your exact .*url if required by portal\)/i.test(trimmed)
   ) {
     return "";
   }
@@ -161,6 +170,60 @@ function parseMarkdownTables(markdown: string): Map<string, string> {
   return fields;
 }
 
+function findProfileValue(fields: Map<string, string>, labelPatterns: RegExp[]): string {
+  for (const [key, value] of fields.entries()) {
+    const normalizedKey = key.trim();
+    for (const pattern of labelPatterns) {
+      if (pattern.test(normalizedKey)) {
+        return normalizeCellValue(value);
+      }
+    }
+  }
+  return "";
+}
+
+function parseYesNo(value: string, fallback: boolean): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (/^(yes|y|true)$/i.test(normalized)) {
+    return true;
+  }
+  if (/^(no|n|false)$/i.test(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function extractUrlFromMarkdown(markdown: string, domainPattern: RegExp): string {
+  const matches = markdown.match(/https?:\/\/[^\s)]+/gi) ?? [];
+  for (const match of matches) {
+    if (domainPattern.test(match)) {
+      return match.trim();
+    }
+  }
+  return "";
+}
+
+async function extractUrlsFromResumePdf(resumePath: string): Promise<{
+  linkedin: string;
+  github: string;
+}> {
+  if (!resumePath || !(await fileExists(resumePath))) {
+    return { linkedin: "", github: "" };
+  }
+
+  try {
+    const raw = (await readFile(resumePath)).toString("latin1");
+    const linkedinMatch = raw.match(/https?:\/\/(?:www\.)?linkedin\.com\/[^\s<>)"]+/i);
+    const githubMatch = raw.match(/https?:\/\/(?:www\.)?github\.com\/[^\s<>)"]+/i);
+    return {
+      linkedin: linkedinMatch?.[0]?.trim() ?? "",
+      github: githubMatch?.[0]?.trim() ?? ""
+    };
+  } catch {
+    return { linkedin: "", github: "" };
+  }
+}
+
 async function loadProfile(): Promise<ProfileData> {
   let sourcePath = PROFILE_LOCAL_PATH;
   let markdown = "";
@@ -173,11 +236,34 @@ async function loadProfile(): Promise<ProfileData> {
 
   const fields = parseMarkdownTables(markdown);
   const resumePath = await resolveResumePath(markdown);
+  const resumeUrls = await extractUrlsFromResumePdf(resumePath);
+  const firstName = normalizeCellValue(fields.get("First Name"));
+  const lastName = normalizeCellValue(fields.get("Last Name"));
+  const fullName = `${firstName} ${lastName}`.trim();
+  const linkedin =
+    normalizeCellValue(fields.get("LinkedIn")) ||
+    findProfileValue(fields, [/linkedin/i]) ||
+    extractUrlFromMarkdown(markdown, /linkedin\.com/i) ||
+    resumeUrls.linkedin;
+  const github =
+    normalizeCellValue(fields.get("GitHub")) ||
+    findProfileValue(fields, [/github/i]) ||
+    extractUrlFromMarkdown(markdown, /github\.com/i) ||
+    resumeUrls.github;
+
+  const authorizedRaw = findProfileValue(fields, [/legally\s+authorized/i, /authorized.*work/i]);
+  const sponsorshipRaw = findProfileValue(fields, [/visa\s+sponsorship/i, /require.*sponsorship/i]);
+  const relocateRaw = findProfileValue(fields, [/willing.*relocat/i, /relocate/i]);
+  const relativeRaw = findProfileValue(fields, [/relative.*works/i, /related.*employee/i]);
+  const referralRaw = findProfileValue(fields, [/referral/i, /referred/i]);
+  const previousRaw = findProfileValue(fields, [/previously.*worked/i, /worked.*company/i]);
+  const currentEmployeeRaw = findProfileValue(fields, [/current\s+employee/i]);
 
   return {
     source: path.basename(sourcePath),
-    firstName: normalizeCellValue(fields.get("First Name")),
-    lastName: normalizeCellValue(fields.get("Last Name")),
+    firstName,
+    lastName,
+    fullName,
     preferredName: normalizeCellValue(fields.get("Preferred Name")),
     email: normalizeCellValue(fields.get("Email")),
     phone: normalizeCellValue(fields.get("Phone Number")),
@@ -186,8 +272,8 @@ async function loadProfile(): Promise<ProfileData> {
     city: normalizeCellValue(fields.get("City")),
     state: normalizeCellValue(fields.get("State")),
     zip: normalizeCellValue(fields.get("Zip/Postal Code")),
-    linkedin: normalizeCellValue(fields.get("LinkedIn")),
-    github: normalizeCellValue(fields.get("GitHub")),
+    linkedin,
+    github,
     school: normalizeCellValue(fields.get("School")),
     degree: normalizeCellValue(fields.get("Degree")),
     fieldOfStudy: normalizeCellValue(fields.get("Field of Study")),
@@ -196,7 +282,14 @@ async function loadProfile(): Promise<ProfileData> {
       normalizeCellValue(fields.get("Expected Graduation")) ||
       normalizeCellValue(fields.get("Graduation Date")),
     password: normalizeCellValue(fields.get("Password")),
-    resumePath
+    resumePath,
+    legallyAuthorizedToWork: parseYesNo(authorizedRaw, true),
+    requiresVisaSponsorship: parseYesNo(sponsorshipRaw, false),
+    willingToRelocate: parseYesNo(relocateRaw, true),
+    relativeWorksAtCompany: parseYesNo(relativeRaw, false),
+    referral: parseYesNo(referralRaw, false),
+    previouslyWorkedAtCompany: parseYesNo(previousRaw, false),
+    currentEmployee: parseYesNo(currentEmployeeRaw, false)
   };
 }
 
@@ -451,6 +544,26 @@ async function fillCustomDropdown(
 }
 
 async function fillCommonFields(page: Page, profile: ProfileData): Promise<void> {
+  const hasSplitNameFields =
+    (await page.getByLabel(/first\s*name|given\s*name/i).count()) > 0 ||
+    (await page.getByLabel(/last\s*name|family\s*name|surname/i).count()) > 0;
+  if (profile.fullName) {
+    const filledFullNameByLabel = await fillByLabel(page, /full\s*name/i, profile.fullName);
+    if (!filledFullNameByLabel && !hasSplitNameFields) {
+      for (const selector of [
+        "input[name='name']",
+        "input[name*='full' i][name*='name' i]",
+        "input[autocomplete='name']"
+      ]) {
+        const filled = await setTextLikeField(page, selector, profile.fullName);
+        if (filled) {
+          break;
+        }
+      }
+      await fillByLabel(page, /^name$/i, profile.fullName);
+    }
+  }
+
   const textSteps: Array<{ label: RegExp; value: string; selectors: string[] }> = [
     {
       label: /first\s*name|given\s*name/i,
@@ -573,20 +686,55 @@ async function clickBinaryQuestion(
     return;
   }
 
+  const button = container.getByRole("button", { name: answerRegex }).first();
+  if ((await button.count()) > 0 && (await safeVisible(button))) {
+    await clickLocatorWithFallback(button, 1500);
+    return;
+  }
+
+  const genericButton = container
+    .locator("button, [role='button']")
+    .filter({ hasText: answerRegex })
+    .first();
+  if ((await genericButton.count()) > 0 && (await safeVisible(genericButton))) {
+    await clickLocatorWithFallback(genericButton, 1500);
+    return;
+  }
+
   const text = container.getByText(answerRegex).first();
   if ((await text.count()) > 0 && (await safeVisible(text))) {
     await text.click({ timeout: 1500 }).catch(() => undefined);
   }
 }
 
-async function fillYesNoQuestions(page: Page): Promise<void> {
-  await clickBinaryQuestion(page, /authorized\s*to\s*work|legally\s*authorized/i, /yes/i);
-  await clickBinaryQuestion(page, /require\s*visa|sponsorship/i, /no/i);
-  await clickBinaryQuestion(page, /willing\s*to\s*relocate/i, /yes/i);
-  await clickBinaryQuestion(page, /relative\s*works|related\s*to\s*employee/i, /no/i);
-  await clickBinaryQuestion(page, /referral|referred/i, /no/i);
-  await clickBinaryQuestion(page, /previously\s*worked|worked\s*here/i, /no/i);
-  await clickBinaryQuestion(page, /current\s*employee/i, /no/i);
+async function fillYesNoQuestions(page: Page, profile: ProfileData): Promise<void> {
+  await clickBinaryQuestion(
+    page,
+    /authorized\s*to\s*work|legally\s*authorized/i,
+    profile.legallyAuthorizedToWork ? /yes/i : /no/i
+  );
+  await clickBinaryQuestion(
+    page,
+    /require\s*visa|sponsorship/i,
+    profile.requiresVisaSponsorship ? /yes/i : /no/i
+  );
+  await clickBinaryQuestion(
+    page,
+    /willing.*relocate|relocate\s*if\s*needed|able\s+and\s+willing/i,
+    profile.willingToRelocate ? /yes/i : /no/i
+  );
+  await clickBinaryQuestion(
+    page,
+    /relative\s*works|related\s*to\s*employee/i,
+    profile.relativeWorksAtCompany ? /yes/i : /no/i
+  );
+  await clickBinaryQuestion(page, /referral|referred/i, profile.referral ? /yes/i : /no/i);
+  await clickBinaryQuestion(
+    page,
+    /previously\s*worked|worked\s*here|worked\s*at\s*the\s*company/i,
+    profile.previouslyWorkedAtCompany ? /yes/i : /no/i
+  );
+  await clickBinaryQuestion(page, /current\s*employee/i, profile.currentEmployee ? /yes/i : /no/i);
 }
 
 async function fillTextareas(page: Page): Promise<void> {
@@ -1323,7 +1471,7 @@ async function run(): Promise<void> {
           await closeSimplifySidePanel(page, output);
           await fillCommonFields(page, profile);
           await uploadResume(page, profile, output);
-          await fillYesNoQuestions(page);
+          await fillYesNoQuestions(page, profile);
           await fillTextareas(page);
 
           await captureStepScreenshot(
