@@ -1,9 +1,11 @@
-import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { mkdir } from "node:fs/promises";
+import {
+  FormFillRunnerBusyError,
+  runFormFillWithTmux,
+  type FormFillRunMetadata
+} from "@/lib/form-fill-runner";
 
-export interface FormFillResult {
+export interface FormFillResult extends FormFillRunMetadata {
   stoppedAtSubmit: boolean;
   screenshotPaths: string[];
   finalUrl: string;
@@ -13,56 +15,11 @@ export interface FormFillResult {
   skillDeviationReasons: string[];
 }
 
+type ParsedFormFillPayload = Omit<FormFillResult, keyof FormFillRunMetadata>;
+
 const ARTIFACTS_DIR = "artifacts";
-const CODEX_OUTPUT_FILE = "codex-last-message.txt";
-const CODEX_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const FORM_FILL_TIMEOUT_MS = Number(process.env.FORM_FILL_AGENT_TIMEOUT_MS ?? 15 * 60 * 1000);
 const DEFAULT_CDP_ENDPOINT = "http://localhost:9222";
-
-type ExecResult = {
-  stdout: string;
-  stderr: string;
-};
-
-type ExecErrorWithOutput = Error & {
-  code?: string | number;
-  stdout?: string;
-  stderr?: string;
-};
-
-function runExecFile(command: string, args: string[], cdpEndpoint: string): Promise<ExecResult> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      command,
-      args,
-      {
-        cwd: process.cwd(),
-        timeout: FORM_FILL_TIMEOUT_MS,
-        maxBuffer: CODEX_MAX_BUFFER_BYTES,
-        env: {
-          ...process.env,
-          CDP_ENDPOINT: cdpEndpoint
-        }
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          const execError = error as ExecErrorWithOutput;
-          const reason = [
-            `codex exec failed`,
-            typeof execError.code !== "undefined" ? `code=${String(execError.code)}` : null,
-            execError.message ? `message=${execError.message}` : null
-          ]
-            .filter(Boolean)
-            .join(", ");
-          reject(new Error(reason));
-          return;
-        }
-
-        resolve({ stdout, stderr });
-      }
-    );
-  });
-}
 
 function buildFormFillPrompt(applicationUrl: string): string {
   return [
@@ -78,9 +35,10 @@ function buildFormFillPrompt(applicationUrl: string): string {
     "If blocked by CAPTCHA/login/2FA/network/sandbox, stop and still return JSON.",
     "If you deviate from the skill workflow, record each deviation reason in skillDeviationReasons in chronological order.",
     "Record all blockers/failure causes in orderedReasons in chronological order.",
-    "Return ONLY valid JSON with this exact shape:",
+    "Return ONLY valid JSON. Do not return markdown.",
+    "Use this exact shape:",
     '{"stoppedAtSubmit": boolean, "screenshotPaths": string[], "finalUrl": string, "manualActionRequired": boolean, "manualActionReason": string | null, "orderedReasons": string[], "skillDeviationReasons": string[]}',
-    'For manualActionReason use short snake_case values such as: "security_verification", "captcha", "login_required", "two_factor_required", "network_blocked", "unknown".'
+    'For manualActionReason use short snake_case values such as: "security_verification", "captcha", "login_required", "two_factor_required", "network_blocked", "runner_busy", "unknown".'
   ].join("\n");
 }
 
@@ -101,50 +59,50 @@ function extractJsonPayload(raw: string): string {
     return trimmed.slice(objectStart, objectEnd + 1).trim();
   }
 
-  throw new Error("codex exec response did not include JSON output.");
+  throw new Error("form-fill runner response did not include JSON output.");
 }
 
-function parseFormFillResult(raw: string): FormFillResult {
-  const payload = JSON.parse(extractJsonPayload(raw)) as Partial<FormFillResult>;
+function parseFormFillResult(raw: string): ParsedFormFillPayload {
+  const payload = JSON.parse(extractJsonPayload(raw)) as Partial<ParsedFormFillPayload>;
 
   if (typeof payload.stoppedAtSubmit !== "boolean") {
-    throw new Error("codex exec result missing boolean stoppedAtSubmit.");
+    throw new Error("form-fill result missing boolean stoppedAtSubmit.");
   }
 
   if (!Array.isArray(payload.screenshotPaths)) {
-    throw new Error("codex exec result missing screenshotPaths array.");
+    throw new Error("form-fill result missing screenshotPaths array.");
   }
 
   if (!payload.screenshotPaths.every((pathValue) => typeof pathValue === "string")) {
-    throw new Error("codex exec result screenshotPaths must contain only strings.");
+    throw new Error("form-fill result screenshotPaths must contain only strings.");
   }
 
   if (typeof payload.finalUrl !== "string" || payload.finalUrl.trim().length === 0) {
-    throw new Error("codex exec result missing finalUrl.");
+    throw new Error("form-fill result missing finalUrl.");
   }
 
   if (typeof payload.manualActionRequired !== "boolean") {
-    throw new Error("codex exec result missing boolean manualActionRequired.");
+    throw new Error("form-fill result missing boolean manualActionRequired.");
   }
 
   if (typeof payload.manualActionReason !== "string" && payload.manualActionReason !== null) {
-    throw new Error("codex exec result manualActionReason must be string or null.");
+    throw new Error("form-fill result manualActionReason must be string or null.");
   }
 
   if (!Array.isArray(payload.orderedReasons)) {
-    throw new Error("codex exec result missing orderedReasons array.");
+    throw new Error("form-fill result missing orderedReasons array.");
   }
 
   if (!payload.orderedReasons.every((reason) => typeof reason === "string")) {
-    throw new Error("codex exec result orderedReasons must contain only strings.");
+    throw new Error("form-fill result orderedReasons must contain only strings.");
   }
 
   if (!Array.isArray(payload.skillDeviationReasons)) {
-    throw new Error("codex exec result missing skillDeviationReasons array.");
+    throw new Error("form-fill result missing skillDeviationReasons array.");
   }
 
   if (!payload.skillDeviationReasons.every((reason) => typeof reason === "string")) {
-    throw new Error("codex exec result skillDeviationReasons must contain only strings.");
+    throw new Error("form-fill result skillDeviationReasons must contain only strings.");
   }
 
   return {
@@ -160,32 +118,23 @@ function parseFormFillResult(raw: string): FormFillResult {
 
 export async function autoFillApplication(applicationUrl: string): Promise<FormFillResult> {
   await mkdir(ARTIFACTS_DIR, { recursive: true });
-
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "codex-form-fill-"));
-  const outputPath = path.join(tempDir, CODEX_OUTPUT_FILE);
   const cdpEndpoint = process.env.CDP_ENDPOINT?.trim() || DEFAULT_CDP_ENDPOINT;
 
-  try {
-    const prompt = buildFormFillPrompt(applicationUrl);
-    await runExecFile(
-      "codex",
-      [
-        "exec",
-        "--full-auto",
-        "--sandbox",
-        "workspace-write",
-        "--cd",
-        process.cwd(),
-        "--output-last-message",
-        outputPath,
-        prompt
-      ],
-      cdpEndpoint
-    );
+  const prompt = buildFormFillPrompt(applicationUrl);
+  const run = await runFormFillWithTmux({
+    prompt,
+    cdpEndpoint,
+    timeoutMs: FORM_FILL_TIMEOUT_MS
+  });
 
-    const lastMessage = await readFile(outputPath, "utf8");
-    return parseFormFillResult(lastMessage);
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
-  }
+  const parsed = parseFormFillResult(run.rawOutput);
+  return {
+    ...parsed,
+    runId: run.runId,
+    runDir: run.runDir,
+    agentLogPath: run.agentLogPath,
+    rawOutputPath: run.rawOutputPath
+  };
 }
+
+export { FormFillRunnerBusyError };

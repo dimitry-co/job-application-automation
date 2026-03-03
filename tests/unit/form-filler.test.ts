@@ -1,42 +1,31 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-type ExecCallback = (error: Error | null, stdout: string, stderr: string) => void;
-
-const { execFileMock, mkdirMock, mkdtempMock, readFileMock, rmMock } = vi.hoisted(() => ({
-  execFileMock: vi.fn(),
+const { mkdirMock, runFormFillWithTmuxMock } = vi.hoisted(() => ({
   mkdirMock: vi.fn(),
-  mkdtempMock: vi.fn(),
-  readFileMock: vi.fn(),
-  rmMock: vi.fn()
-}));
-
-vi.mock("node:child_process", () => ({
-  execFile: execFileMock
+  runFormFillWithTmuxMock: vi.fn()
 }));
 
 vi.mock("node:fs/promises", () => ({
-  mkdir: mkdirMock,
-  mkdtemp: mkdtempMock,
-  readFile: readFileMock,
-  rm: rmMock
+  mkdir: mkdirMock
+}));
+
+vi.mock("@/lib/form-fill-runner", () => ({
+  runFormFillWithTmux: runFormFillWithTmuxMock,
+  FormFillRunnerBusyError: class FormFillRunnerBusyError extends Error {}
 }));
 
 import { autoFillApplication } from "@/lib/form-filler";
 
 describe("autoFillApplication", () => {
-  const originalCdpEndpoint = process.env.CDP_ENDPOINT;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    if (typeof originalCdpEndpoint === "undefined") {
-      delete process.env.CDP_ENDPOINT;
-    } else {
-      process.env.CDP_ENDPOINT = originalCdpEndpoint;
-    }
     mkdirMock.mockResolvedValue(undefined);
-    mkdtempMock.mockResolvedValue("/tmp/codex-form-fill-test");
-    readFileMock.mockResolvedValue(
-      JSON.stringify({
+    runFormFillWithTmuxMock.mockResolvedValue({
+      runId: "run-1",
+      runDir: "/tmp/run-1",
+      agentLogPath: "/tmp/run-1/pane.log",
+      rawOutputPath: "/tmp/run-1/last-message.txt",
+      rawOutput: JSON.stringify({
         stoppedAtSubmit: true,
         screenshotPaths: ["artifacts/step-1.png", "artifacts/step-2.png"],
         finalUrl: "https://jobs.example.com/apply#submit",
@@ -45,56 +34,21 @@ describe("autoFillApplication", () => {
         orderedReasons: [],
         skillDeviationReasons: []
       })
-    );
-    rmMock.mockResolvedValue(undefined);
-    execFileMock.mockImplementation(
-      (
-        _command: string,
-        _args: string[],
-        _options: Record<string, unknown>,
-        callback: ExecCallback
-      ) => {
-        callback(null, "", "");
-        return {} as never;
-      }
-    );
+    });
   });
 
-  afterEach(() => {
-    if (typeof originalCdpEndpoint === "undefined") {
-      delete process.env.CDP_ENDPOINT;
-    } else {
-      process.env.CDP_ENDPOINT = originalCdpEndpoint;
-    }
-    vi.restoreAllMocks();
-  });
-
-  test("runs codex exec and returns parsed JSON result", async () => {
+  test("runs tmux form-fill runner and returns parsed JSON result with run metadata", async () => {
     const result = await autoFillApplication("https://jobs.example.com/opening");
 
     expect(mkdirMock).toHaveBeenCalledWith("artifacts", { recursive: true });
-    expect(execFileMock).toHaveBeenCalledTimes(1);
-
-    const [, args, options] = execFileMock.mock.calls[0] as [
-      string,
-      string[],
-      { env?: Record<string, string | undefined> }
+    expect(runFormFillWithTmuxMock).toHaveBeenCalledTimes(1);
+    const [input] = runFormFillWithTmuxMock.mock.calls[0] as [
+      { prompt: string; cdpEndpoint: string; timeoutMs: number }
     ];
-    expect(args).toContain("exec");
-    expect(args).toContain("--output-last-message");
-    expect(args[args.length - 1]).toContain("https://jobs.example.com/opening");
-    expect(args[args.length - 1]).toContain("Connect to the user's already-running Chrome via CDP");
-    expect(args[args.length - 1]).toContain("Do not launch a new browser or use headless mode.");
-    expect(options.env?.CDP_ENDPOINT).toBe("http://localhost:9222");
+    expect(input.cdpEndpoint).toBe("http://localhost:9222");
+    expect(input.prompt).toContain("https://jobs.example.com/opening");
+    expect(input.prompt).toContain("Return ONLY valid JSON. Do not return markdown.");
 
-    expect(readFileMock).toHaveBeenCalledWith(
-      "/tmp/codex-form-fill-test/codex-last-message.txt",
-      "utf8"
-    );
-    expect(rmMock).toHaveBeenCalledWith("/tmp/codex-form-fill-test", {
-      recursive: true,
-      force: true
-    });
     expect(result).toEqual({
       stoppedAtSubmit: true,
       screenshotPaths: ["artifacts/step-1.png", "artifacts/step-2.png"],
@@ -102,19 +56,27 @@ describe("autoFillApplication", () => {
       manualActionRequired: false,
       manualActionReason: null,
       orderedReasons: [],
-      skillDeviationReasons: []
+      skillDeviationReasons: [],
+      runId: "run-1",
+      runDir: "/tmp/run-1",
+      agentLogPath: "/tmp/run-1/pane.log",
+      rawOutputPath: "/tmp/run-1/last-message.txt"
     });
   });
 
   test("accepts JSON wrapped in markdown code fences", async () => {
-    readFileMock.mockResolvedValue(
-      [
+    runFormFillWithTmuxMock.mockResolvedValue({
+      runId: "run-2",
+      runDir: "/tmp/run-2",
+      agentLogPath: "/tmp/run-2/pane.log",
+      rawOutputPath: "/tmp/run-2/last-message.txt",
+      rawOutput: [
         "Result:",
         "```json",
         '{"stoppedAtSubmit":false,"screenshotPaths":["artifacts/step.png"],"finalUrl":"https://jobs.example.com/apply","manualActionRequired":true,"manualActionReason":"security_verification","orderedReasons":["security_verification_page","form_not_reached"],"skillDeviationReasons":["inline_script_used_for_fallback"]}',
         "```"
       ].join("\n")
-    );
+    });
 
     const result = await autoFillApplication("https://jobs.example.com/opening");
 
@@ -125,43 +87,45 @@ describe("autoFillApplication", () => {
       manualActionRequired: true,
       manualActionReason: "security_verification",
       orderedReasons: ["security_verification_page", "form_not_reached"],
-      skillDeviationReasons: ["inline_script_used_for_fallback"]
+      skillDeviationReasons: ["inline_script_used_for_fallback"],
+      runId: "run-2",
+      runDir: "/tmp/run-2",
+      agentLogPath: "/tmp/run-2/pane.log",
+      rawOutputPath: "/tmp/run-2/last-message.txt"
     });
   });
 
-  test("passes configured CDP endpoint to codex exec env", async () => {
+  test("passes configured CDP endpoint to runner", async () => {
+    const originalCdpEndpoint = process.env.CDP_ENDPOINT;
     process.env.CDP_ENDPOINT = "http://localhost:9333";
 
-    await autoFillApplication("https://jobs.example.com/opening");
+    try {
+      await autoFillApplication("https://jobs.example.com/opening");
+    } finally {
+      if (typeof originalCdpEndpoint === "undefined") {
+        delete process.env.CDP_ENDPOINT;
+      } else {
+        process.env.CDP_ENDPOINT = originalCdpEndpoint;
+      }
+    }
 
-    const [, , options] = execFileMock.mock.calls[0] as [
-      string,
-      string[],
-      { env?: Record<string, string | undefined> }
+    const [input] = runFormFillWithTmuxMock.mock.calls[0] as [
+      { prompt: string; cdpEndpoint: string; timeoutMs: number }
     ];
-    expect(options.env?.CDP_ENDPOINT).toBe("http://localhost:9333");
+    expect(input.cdpEndpoint).toBe("http://localhost:9333");
   });
 
-  test("cleans temp directory and throws when codex exec fails", async () => {
-    execFileMock.mockImplementation(
-      (
-        _command: string,
-        _args: string[],
-        _options: Record<string, unknown>,
-        callback: ExecCallback
-      ) => {
-        callback(new Error("spawn codex ENOENT"), "", "");
-        return {} as never;
-      }
-    );
+  test("throws when runner output is missing JSON payload", async () => {
+    runFormFillWithTmuxMock.mockResolvedValue({
+      runId: "run-3",
+      runDir: "/tmp/run-3",
+      agentLogPath: "/tmp/run-3/pane.log",
+      rawOutputPath: "/tmp/run-3/last-message.txt",
+      rawOutput: "No structured output"
+    });
 
     await expect(autoFillApplication("https://jobs.example.com/opening")).rejects.toThrow(
-      "codex exec failed"
+      "did not include JSON output"
     );
-    expect(rmMock).toHaveBeenCalledWith("/tmp/codex-form-fill-test", {
-      recursive: true,
-      force: true
-    });
-    expect(readFileMock).not.toHaveBeenCalled();
   });
 });

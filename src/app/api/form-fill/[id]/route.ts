@@ -4,7 +4,7 @@ import {
 } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { autoFillApplication } from "@/lib/form-filler";
+import { autoFillApplication, FormFillRunnerBusyError } from "@/lib/form-filler";
 import { canTransitionStatus, toApiJobStatus, toJobDTO } from "@/lib/job-dto";
 
 type RouteContext = {
@@ -14,6 +14,10 @@ type RouteContext = {
 const FORM_FILL_FAILED_MESSAGE = "Form fill execution failed. Review screenshots/logs and retry.";
 const MANUAL_ACTION_REQUIRED_MESSAGE =
   "Manual action required: security/login verification blocked automation. Complete it in browser, then retry form fill.";
+const FORM_FILL_INCOMPLETE_MESSAGE =
+  "Form fill did not reach a submit-ready state. Review captured screenshots/logs and retry.";
+const RUNNER_BUSY_MESSAGE =
+  "Another form-fill runner is already active. Wait for it to finish, then retry.";
 
 export async function POST(_: NextRequest, { params }: RouteContext) {
   const { id } = await params;
@@ -72,6 +76,12 @@ export async function POST(_: NextRequest, { params }: RouteContext) {
 
   try {
     const formFill = await autoFillApplication(existingJob.applicationUrl);
+    const runMetadata = {
+      runId: formFill.runId,
+      runDir: formFill.runDir,
+      agentLogPath: formFill.agentLogPath,
+      rawOutputPath: formFill.rawOutputPath
+    };
 
     if (formFill.manualActionRequired) {
       const blockedJob = await prisma.job.update({
@@ -94,7 +104,36 @@ export async function POST(_: NextRequest, { params }: RouteContext) {
           orderedReasons: formFill.orderedReasons,
           skillDeviationReasons: formFill.skillDeviationReasons,
           job: toJobDTO(blockedJob),
-          formFill
+          formFill,
+          ...runMetadata
+        },
+        { status: 409 }
+      );
+    }
+
+    if (!formFill.stoppedAtSubmit) {
+      const incompleteJob = await prisma.job.update({
+        where: {
+          id
+        },
+        data: {
+          status: PrismaJobStatus.ready,
+          formFillStatus: PrismaFormFillStatus.failed,
+          formScreenshots: formFill.screenshotPaths
+        }
+      });
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: FORM_FILL_INCOMPLETE_MESSAGE,
+          manualActionRequired: true,
+          manualActionReason: "submit_not_reached",
+          orderedReasons: formFill.orderedReasons,
+          skillDeviationReasons: formFill.skillDeviationReasons,
+          job: toJobDTO(incompleteJob),
+          formFill,
+          ...runMetadata
         },
         { status: 409 }
       );
@@ -114,9 +153,35 @@ export async function POST(_: NextRequest, { params }: RouteContext) {
     return NextResponse.json({
       ok: true,
       job: toJobDTO(updatedJob),
-      formFill
+      formFill,
+      ...runMetadata
     });
   } catch (error) {
+    if (error instanceof FormFillRunnerBusyError) {
+      const revertedJob = await prisma.job.update({
+        where: {
+          id
+        },
+        data: {
+          status: PrismaJobStatus.ready,
+          formFillStatus: PrismaFormFillStatus.pending
+        }
+      });
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: RUNNER_BUSY_MESSAGE,
+          manualActionRequired: true,
+          manualActionReason: "runner_busy",
+          orderedReasons: ["runner_busy"],
+          skillDeviationReasons: [],
+          job: toJobDTO(revertedJob)
+        },
+        { status: 409 }
+      );
+    }
+
     console.error("Form-fill execution failed", {
       jobId: id,
       error: error instanceof Error ? error.message : "Unknown error"

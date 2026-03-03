@@ -1,7 +1,7 @@
 import type { JobSource } from "@prisma/client";
 import { parseSWEListHtml } from "@/lib/email-parser";
 import { prisma } from "@/lib/db";
-import { getSWEListEmails } from "@/lib/gmail";
+import { getSWEListEmails, type SWEListEmail } from "@/lib/gmail";
 import type { ParsedSWEListJob } from "@/types";
 
 export interface SyncIngestionResult {
@@ -63,6 +63,39 @@ async function markSyncComplete(lastSyncedAt: Date): Promise<void> {
   });
 }
 
+function getTimestamp(value: Date): number | null {
+  return Number.isNaN(value.getTime()) ? null : value.getTime();
+}
+
+function sortByDateAscending(emails: SWEListEmail[]): SWEListEmail[] {
+  return [...emails].sort((a, b) => {
+    const aTimestamp = getTimestamp(a.datePosted) ?? Number.MAX_SAFE_INTEGER;
+    const bTimestamp = getTimestamp(b.datePosted) ?? Number.MAX_SAFE_INTEGER;
+    return aTimestamp - bTimestamp;
+  });
+}
+
+function resolveNextSyncCursor(emails: SWEListEmail[], fallback: Date): Date {
+  let maxTimestamp: number | null = null;
+
+  for (const email of emails) {
+    const timestamp = getTimestamp(email.datePosted);
+    if (timestamp === null) {
+      continue;
+    }
+
+    if (maxTimestamp === null || timestamp > maxTimestamp) {
+      maxTimestamp = timestamp;
+    }
+  }
+
+  if (maxTimestamp === null) {
+    return fallback;
+  }
+
+  return new Date(maxTimestamp);
+}
+
 export async function ingestSWEListJobs(): Promise<SyncIngestionResult> {
   const syncState = await prisma.emailSyncState.findUnique({
     where: { id: SYNC_STATE_SINGLETON_ID }
@@ -73,14 +106,15 @@ export async function ingestSWEListJobs(): Promise<SyncIngestionResult> {
     maxResults: INCREMENTAL_SYNC_MAX_RESULTS,
     afterDate: syncState?.lastSyncedAt
   });
+  const normalizedEmails = isIncrementalSync ? sortByDateAscending(fetchedEmails) : fetchedEmails;
   const emails = isIncrementalSync
-    ? fetchedEmails.slice(0, INCREMENTAL_EMAILS_TO_PROCESS)
-    : fetchedEmails;
+    ? normalizedEmails.slice(0, INCREMENTAL_EMAILS_TO_PROCESS)
+    : normalizedEmails;
 
   const parsedCandidates = emails.flatMap((email) =>
     parseSWEListHtml(email.html, email.subject, email.datePosted)
   );
-  const completedAt = new Date();
+  const completedAt = resolveNextSyncCursor(emails, new Date());
 
   const discovered = parsedCandidates.length;
   if (discovered === 0) {

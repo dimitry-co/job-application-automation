@@ -11,14 +11,19 @@ function detectSource(subject: string): ParsedSWEListJob["source"] {
   return /internship/i.test(subject) ? "internship" : "new-grad";
 }
 
+const US_STATE_SUFFIX_PATTERN =
+  /,\s*(AL|AK|AZ|AR|CA|CO|CT|DC|DE|FL|GA|HI|IA|ID|IL|IN|KS|KY|LA|MA|MD|ME|MI|MN|MO|MS|MT|NC|ND|NE|NH|NJ|NM|NV|NY|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VA|VT|WA|WI|WV|WY)\b/;
+const REMOTE_US_PATTERN =
+  /\bremote\b.*\b(united states|u\.s\.a?\.?|usa|us)\b|\b(united states|u\.s\.a?\.?|usa|us)\b.*\bremote\b/i;
+
 function isLikelyUSLocation(text: string): boolean {
   const value = text.toLowerCase();
   return (
     value.includes("united states") ||
-    value.includes(" usa") ||
     value.includes("u.s.") ||
-    value.includes("remote") ||
-    /\b[A-Z]{2}\b/.test(text)
+    value.includes(" usa") ||
+    REMOTE_US_PATTERN.test(text) ||
+    US_STATE_SUFFIX_PATTERN.test(text)
   );
 }
 

@@ -63,9 +63,9 @@ describe("ingestSWEListJobs", () => {
       createEmail({
         subject: "102 New Jobs Posted Today",
         html: [
-          '<a href="https://existing.dev/apply">Existing Co: Software Engineer</a> Remote',
-          '<a href="https://newco.dev/apply">New Co: Backend Engineer</a> Remote',
-          '<a href="https://newco.dev/apply">New Co: Backend Engineer</a> Remote'
+          '<a href="https://existing.dev/apply">Existing Co: Software Engineer</a> Remote (US)',
+          '<a href="https://newco.dev/apply">New Co: Backend Engineer</a> Remote (US)',
+          '<a href="https://newco.dev/apply">New Co: Backend Engineer</a> Remote (US)'
         ].join("\n")
       }),
       createEmail({
@@ -73,8 +73,8 @@ describe("ingestSWEListJobs", () => {
         threadId: "thread-2",
         subject: "99 New Internships Posted Today",
         html: [
-          '<a href="https://newco.dev/apply">New Co: Software Engineer Intern</a> Remote',
-          '<a href="https://another.dev/apply">Another Co: SWE Intern</a> Remote'
+          '<a href="https://newco.dev/apply">New Co: Software Engineer Intern</a> Remote (US)',
+          '<a href="https://another.dev/apply">Another Co: SWE Intern</a> Remote (US)'
         ].join("\n")
       })
     ]);
@@ -133,8 +133,11 @@ describe("ingestSWEListJobs", () => {
     });
   });
 
-  test("uses incremental sync state and only parses the two newest emails", async () => {
+  test("uses incremental sync state and processes oldest pending emails first", async () => {
     const lastSyncedAt = new Date("2026-02-24T12:00:00.000Z");
+    const oldest = new Date("2026-02-24T12:01:00.000Z");
+    const middle = new Date("2026-02-24T12:02:00.000Z");
+    const newest = new Date("2026-02-24T12:03:00.000Z");
     findUniqueMock.mockResolvedValue({
       id: "singleton",
       lastSyncedAt,
@@ -144,15 +147,18 @@ describe("ingestSWEListJobs", () => {
     getSWEListEmailsMock.mockResolvedValue([
       createEmail({
         id: "msg-newest",
-        html: '<a href="https://newest.dev/apply">Newest Co: SWE</a> Remote'
+        datePosted: newest,
+        html: '<a href="https://newest.dev/apply">Newest Co: SWE</a> Remote (US)'
       }),
       createEmail({
         id: "msg-second",
-        html: '<a href="https://second.dev/apply">Second Co: SWE</a> Remote'
+        datePosted: middle,
+        html: '<a href="https://second.dev/apply">Second Co: SWE</a> Remote (US)'
       }),
       createEmail({
         id: "msg-third",
-        html: '<a href="https://third.dev/apply">Third Co: SWE</a> Remote'
+        datePosted: oldest,
+        html: '<a href="https://third.dev/apply">Third Co: SWE</a> Remote (US)'
       })
     ]);
     createMock.mockResolvedValue({ id: "created" });
@@ -168,13 +174,23 @@ describe("ingestSWEListJobs", () => {
     const createdUrls = createMock.mock.calls.map(
       (call) => (call[0] as { data: { applicationUrl: string } }).data.applicationUrl
     );
-    expect(createdUrls).toEqual(["https://newest.dev/apply", "https://second.dev/apply"]);
+    expect(createdUrls).toEqual(["https://third.dev/apply", "https://second.dev/apply"]);
     expect(result).toEqual({
       discovered: 2,
       created: 2,
       skipped: 0
     });
     expect(upsertMock).toHaveBeenCalledTimes(1);
+    expect(upsertMock).toHaveBeenCalledWith({
+      where: { id: "singleton" },
+      create: {
+        id: "singleton",
+        lastSyncedAt: middle
+      },
+      update: {
+        lastSyncedAt: middle
+      }
+    });
   });
 
   test("updates sync state even when no candidate jobs are parsed", async () => {
@@ -199,7 +215,7 @@ describe("ingestSWEListJobs", () => {
   test("rethrows non-unique database errors and does not update sync state", async () => {
     getSWEListEmailsMock.mockResolvedValue([
       createEmail({
-        html: '<a href="https://broken.dev/apply">Broken Co: SWE</a> Remote'
+        html: '<a href="https://broken.dev/apply">Broken Co: SWE</a> Remote (US)'
       })
     ]);
     createMock.mockRejectedValue(new Error("database unavailable"));
