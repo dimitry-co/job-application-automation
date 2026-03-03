@@ -48,6 +48,8 @@ describe("autoFillApplication", () => {
     expect(input.cdpEndpoint).toBe("http://localhost:9222");
     expect(input.prompt).toContain("https://jobs.example.com/opening");
     expect(input.prompt).toContain("Return ONLY valid JSON. Do not return markdown.");
+    expect(input.prompt).toContain("Do not close the connected browser");
+    expect(input.prompt).toContain("Leave the filled application page open for manual review");
 
     expect(result).toEqual({
       stoppedAtSubmit: true,

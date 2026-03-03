@@ -27,6 +27,8 @@ function buildFormFillPrompt(applicationUrl: string): string {
     "Load profile data from user-profile.local.md when available, otherwise user-profile.md.",
     "Connect to the user's already-running Chrome via CDP using CDP_ENDPOINT (default http://localhost:9222).",
     "Do not launch a new browser or use headless mode.",
+    "Do not close the connected browser, context, or application tab at the end of the run.",
+    "Leave the filled application page open for manual review when submit is visible.",
     "Run the full job application form-fill workflow for this application URL:",
     applicationUrl,
     "Do not modify tracked repository files.",
