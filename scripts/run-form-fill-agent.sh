@@ -28,13 +28,21 @@ if [ "${FORM_FILL_RUNNER_ACTIVE:-}" = "1" ]; then
   exit 18
 fi
 
-cat "$PROMPT_FILE" | FORM_FILL_RUNNER_ACTIVE=1 CDP_ENDPOINT="$CDP_ENDPOINT_VALUE" codex exec \
-  --model "${FORM_FILL_CODEX_MODEL:-gpt-5.3-codex}" \
-  -c "model_reasoning_effort=${FORM_FILL_REASONING_EFFORT:-high}" \
-  --dangerously-bypass-approvals-and-sandbox \
-  --cd "$WORKDIR" \
-  --output-last-message "$OUTPUT_FILE" \
-  -
+APPLICATION_URL="$(awk '
+  /Run the full job application form-fill workflow for this application URL:/ { getline; print; exit }
+' "$PROMPT_FILE" | tr -d '\r' | xargs)"
+
+if [ -z "$APPLICATION_URL" ]; then
+  printf 'failed_to_extract_application_url_from_prompt\n' >"$DONE_ERROR"
+  exit 19
+fi
+
+cd "$WORKDIR"
+
+CDP_ENDPOINT="$CDP_ENDPOINT_VALUE" npx tsx scripts/form-fill-direct.ts \
+  "$APPLICATION_URL" \
+  "$OUTPUT_FILE" \
+  "$CDP_ENDPOINT_VALUE"
 
 rm -f "$DONE_ERROR"
 touch "$DONE_OK"
