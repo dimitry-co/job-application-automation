@@ -29,6 +29,8 @@ function buildFormFillPrompt(applicationUrl: string): string {
     "Do not launch a new browser or use headless mode.",
     "Do not close the connected browser, context, or application tab at the end of the run.",
     "Leave the filled application page open for manual review when submit is visible.",
+    "Do not run scripts/run-form-fill-agent.sh, do not call /api/form-fill, and do not start tmux from inside this run.",
+    "Execute the browser workflow directly in this current Codex session only (no nested Codex runner).",
     "Run the full job application form-fill workflow for this application URL:",
     applicationUrl,
     "Do not modify tracked repository files.",

@@ -50,6 +50,8 @@ describe("autoFillApplication", () => {
     expect(input.prompt).toContain("Return ONLY valid JSON. Do not return markdown.");
     expect(input.prompt).toContain("Do not close the connected browser");
     expect(input.prompt).toContain("Leave the filled application page open for manual review");
+    expect(input.prompt).toContain("Do not run scripts/run-form-fill-agent.sh");
+    expect(input.prompt).toContain("no nested Codex runner");
 
     expect(result).toEqual({
       stoppedAtSubmit: true,

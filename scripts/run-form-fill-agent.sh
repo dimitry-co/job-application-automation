@@ -23,7 +23,12 @@ cleanup() {
 
 trap cleanup EXIT
 
-cat "$PROMPT_FILE" | CDP_ENDPOINT="$CDP_ENDPOINT_VALUE" codex exec \
+if [ "${FORM_FILL_RUNNER_ACTIVE:-}" = "1" ]; then
+  printf 'recursive_runner_invocation_blocked\n' >"$DONE_ERROR"
+  exit 18
+fi
+
+cat "$PROMPT_FILE" | FORM_FILL_RUNNER_ACTIVE=1 CDP_ENDPOINT="$CDP_ENDPOINT_VALUE" codex exec \
   --model "${FORM_FILL_CODEX_MODEL:-gpt-5.3-codex}" \
   -c "model_reasoning_effort=${FORM_FILL_REASONING_EFFORT:-high}" \
   --dangerously-bypass-approvals-and-sandbox \
