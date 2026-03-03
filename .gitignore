@@ -12,14 +12,17 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Environment
-.env
-.env.local
+# Environment (local secrets)
+.env*
+!.env.example
 
 # Test artifacts
 coverage/
 playwright-report/
 test-results/
+artifacts/
+.playwright-browsers/
+.DS_Store
 
 # Prisma SQLite local DB
 prisma/dev.db
@@ -29,7 +32,9 @@ prisma/dev.db-journal
 data/resumes/*.pdf
 
 # Local private profile/context (keep out of git)
+user-profile.md
 user-profile.local.md
+user-profile*.local.md
 PROJECT_CONTEXT.local.md
 
 # Planning docs not intended for repo
