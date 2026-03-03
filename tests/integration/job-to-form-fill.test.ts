@@ -174,7 +174,11 @@ describe("job-to-form-fill integration", () => {
     autoFillApplicationMock.mockResolvedValue({
       stoppedAtSubmit: true,
       screenshotPaths: ["artifacts/form-fill-1717171717000.png"],
-      finalUrl: "https://jobs.example.com/opening#submit"
+      finalUrl: "https://jobs.example.com/opening#submit",
+      manualActionRequired: false,
+      manualActionReason: null,
+      orderedReasons: [],
+      skillDeviationReasons: []
     });
 
     const response = await POST(
@@ -185,7 +189,15 @@ describe("job-to-form-fill integration", () => {
     );
     const payload = (await response.json()) as {
       ok: boolean;
-      formFill: { stoppedAtSubmit: boolean; screenshotPaths: string[]; finalUrl: string };
+      formFill: {
+        stoppedAtSubmit: boolean;
+        screenshotPaths: string[];
+        finalUrl: string;
+        manualActionRequired: boolean;
+        manualActionReason: string | null;
+        orderedReasons: string[];
+        skillDeviationReasons: string[];
+      };
       job: {
         status: string;
         formFillStatus: string | null;
@@ -218,10 +230,85 @@ describe("job-to-form-fill integration", () => {
     expect(payload.formFill).toEqual({
       stoppedAtSubmit: true,
       screenshotPaths: ["artifacts/form-fill-1717171717000.png"],
-      finalUrl: "https://jobs.example.com/opening#submit"
+      finalUrl: "https://jobs.example.com/opening#submit",
+      manualActionRequired: false,
+      manualActionReason: null,
+      orderedReasons: [],
+      skillDeviationReasons: []
     });
     expect(payload.job.status).toBe("form-ready");
     expect(payload.job.formFillStatus).toBe("awaiting-review");
+  });
+
+  test("returns 409 with manual-action payload when anti-bot/security blocks automation", async () => {
+    mockPrisma.job.findUnique.mockResolvedValue(buildJob());
+    mockPrisma.job.update.mockResolvedValueOnce(
+      buildJob({
+        status: PrismaJobStatus.ready,
+        formFillStatus: PrismaFormFillStatus.failed,
+        formScreenshots: ["artifacts/form-fill-security.png"]
+      })
+    );
+    autoFillApplicationMock.mockResolvedValue({
+      stoppedAtSubmit: false,
+      screenshotPaths: ["artifacts/form-fill-security.png"],
+      finalUrl: "https://jobs.example.com/security-check",
+      manualActionRequired: true,
+      manualActionReason: "security_verification",
+      orderedReasons: ["security_verification_page", "unable_to_reach_form"],
+      skillDeviationReasons: ["inline_script_used_for_fallback"]
+    });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/form-fill/job-1", {
+        method: "POST"
+      }),
+      formFillParams("job-1")
+    );
+    const payload = (await response.json()) as {
+      ok: boolean;
+      error: string;
+      manualActionRequired: boolean;
+      manualActionReason: string | null;
+      orderedReasons: string[];
+      skillDeviationReasons: string[];
+      formFill: {
+        stoppedAtSubmit: boolean;
+        screenshotPaths: string[];
+        finalUrl: string;
+        manualActionRequired: boolean;
+        manualActionReason: string | null;
+        orderedReasons: string[];
+        skillDeviationReasons: string[];
+      };
+      job: { status: string; formFillStatus: string | null };
+    };
+
+    expect(response.status).toBe(409);
+    expect(payload.ok).toBe(false);
+    expect(payload.error).toContain("Manual action required");
+    expect(payload.manualActionRequired).toBe(true);
+    expect(payload.manualActionReason).toBe("security_verification");
+    expect(payload.orderedReasons).toEqual(["security_verification_page", "unable_to_reach_form"]);
+    expect(payload.skillDeviationReasons).toEqual(["inline_script_used_for_fallback"]);
+    expect(mockPrisma.job.update).toHaveBeenCalledWith({
+      where: {
+        id: "job-1"
+      },
+      data: {
+        status: PrismaJobStatus.ready,
+        formFillStatus: PrismaFormFillStatus.failed,
+        formScreenshots: ["artifacts/form-fill-security.png"]
+      }
+    });
+    expect(payload.job.status).toBe("ready");
+    expect(payload.job.formFillStatus).toBe("failed");
+    expect(payload.formFill.manualActionRequired).toBe(true);
+    expect(payload.formFill.orderedReasons).toEqual([
+      "security_verification_page",
+      "unable_to_reach_form"
+    ]);
+    expect(payload.formFill.skillDeviationReasons).toEqual(["inline_script_used_for_fallback"]);
   });
 
   test("persists failed state and returns safe non-200 error when autofill fails", async () => {

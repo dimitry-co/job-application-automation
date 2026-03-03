@@ -12,6 +12,8 @@ type RouteContext = {
 };
 
 const FORM_FILL_FAILED_MESSAGE = "Form fill execution failed. Review screenshots/logs and retry.";
+const MANUAL_ACTION_REQUIRED_MESSAGE =
+  "Manual action required: security/login verification blocked automation. Complete it in browser, then retry form fill.";
 
 export async function POST(_: NextRequest, { params }: RouteContext) {
   const { id } = await params;
@@ -70,6 +72,34 @@ export async function POST(_: NextRequest, { params }: RouteContext) {
 
   try {
     const formFill = await autoFillApplication(existingJob.applicationUrl);
+
+    if (formFill.manualActionRequired) {
+      const blockedJob = await prisma.job.update({
+        where: {
+          id
+        },
+        data: {
+          status: PrismaJobStatus.ready,
+          formFillStatus: PrismaFormFillStatus.failed,
+          formScreenshots: formFill.screenshotPaths
+        }
+      });
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: MANUAL_ACTION_REQUIRED_MESSAGE,
+          manualActionRequired: true,
+          manualActionReason: formFill.manualActionReason,
+          orderedReasons: formFill.orderedReasons,
+          skillDeviationReasons: formFill.skillDeviationReasons,
+          job: toJobDTO(blockedJob),
+          formFill
+        },
+        { status: 409 }
+      );
+    }
+
     const updatedJob = await prisma.job.update({
       where: {
         id

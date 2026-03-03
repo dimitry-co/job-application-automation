@@ -1,95 +1,167 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { closeMock, countMock, gotoMock, launchMock, newPageMock, screenshotMock, urlMock } =
-  vi.hoisted(() => {
-    const goto = vi.fn();
-    const count = vi.fn();
-    const screenshot = vi.fn();
-    const url = vi.fn();
-    const close = vi.fn();
-    const newPage = vi.fn(async () => ({
-      goto,
-      locator: vi.fn(() => ({
-        count
-      })),
-      screenshot,
-      url
-    }));
-    const launch = vi.fn(async () => ({
-      newPage,
-      close
-    }));
+type ExecCallback = (error: Error | null, stdout: string, stderr: string) => void;
 
-    return {
-      closeMock: close,
-      countMock: count,
-      gotoMock: goto,
-      launchMock: launch,
-      newPageMock: newPage,
-      screenshotMock: screenshot,
-      urlMock: url
-    };
-  });
+const { execFileMock, mkdirMock, mkdtempMock, readFileMock, rmMock } = vi.hoisted(() => ({
+  execFileMock: vi.fn(),
+  mkdirMock: vi.fn(),
+  mkdtempMock: vi.fn(),
+  readFileMock: vi.fn(),
+  rmMock: vi.fn()
+}));
 
-vi.mock("playwright", () => ({
-  chromium: {
-    launch: launchMock
-  }
+vi.mock("node:child_process", () => ({
+  execFile: execFileMock
+}));
+
+vi.mock("node:fs/promises", () => ({
+  mkdir: mkdirMock,
+  mkdtemp: mkdtempMock,
+  readFile: readFileMock,
+  rm: rmMock
 }));
 
 import { autoFillApplication } from "@/lib/form-filler";
 
 describe("autoFillApplication", () => {
+  const originalCdpEndpoint = process.env.CDP_ENDPOINT;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    gotoMock.mockResolvedValue(undefined);
-    countMock.mockResolvedValue(1);
-    screenshotMock.mockResolvedValue(undefined);
-    urlMock.mockReturnValue("https://jobs.example.com/apply");
+    if (typeof originalCdpEndpoint === "undefined") {
+      delete process.env.CDP_ENDPOINT;
+    } else {
+      process.env.CDP_ENDPOINT = originalCdpEndpoint;
+    }
+    mkdirMock.mockResolvedValue(undefined);
+    mkdtempMock.mockResolvedValue("/tmp/codex-form-fill-test");
+    readFileMock.mockResolvedValue(
+      JSON.stringify({
+        stoppedAtSubmit: true,
+        screenshotPaths: ["artifacts/step-1.png", "artifacts/step-2.png"],
+        finalUrl: "https://jobs.example.com/apply#submit",
+        manualActionRequired: false,
+        manualActionReason: null,
+        orderedReasons: [],
+        skillDeviationReasons: []
+      })
+    );
+    rmMock.mockResolvedValue(undefined);
+    execFileMock.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: ExecCallback
+      ) => {
+        callback(null, "", "");
+        return {} as never;
+      }
+    );
   });
 
   afterEach(() => {
+    if (typeof originalCdpEndpoint === "undefined") {
+      delete process.env.CDP_ENDPOINT;
+    } else {
+      process.env.CDP_ENDPOINT = originalCdpEndpoint;
+    }
     vi.restoreAllMocks();
   });
 
-  test("captures screenshot and reports submit stopping point", async () => {
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1_717_171_717_000);
-
+  test("runs codex exec and returns parsed JSON result", async () => {
     const result = await autoFillApplication("https://jobs.example.com/opening");
 
-    expect(launchMock).toHaveBeenCalledWith({ headless: false });
-    expect(newPageMock).toHaveBeenCalledTimes(1);
-    expect(gotoMock).toHaveBeenCalledWith("https://jobs.example.com/opening", {
-      waitUntil: "domcontentloaded"
-    });
-    expect(screenshotMock).toHaveBeenCalledWith({
-      path: "artifacts/form-fill-1717171717000.png",
-      fullPage: true
+    expect(mkdirMock).toHaveBeenCalledWith("artifacts", { recursive: true });
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+
+    const [, args, options] = execFileMock.mock.calls[0] as [
+      string,
+      string[],
+      { env?: Record<string, string | undefined> }
+    ];
+    expect(args).toContain("exec");
+    expect(args).toContain("--output-last-message");
+    expect(args[args.length - 1]).toContain("https://jobs.example.com/opening");
+    expect(args[args.length - 1]).toContain("Connect to the user's already-running Chrome via CDP");
+    expect(args[args.length - 1]).toContain("Do not launch a new browser or use headless mode.");
+    expect(options.env?.CDP_ENDPOINT).toBe("http://localhost:9222");
+
+    expect(readFileMock).toHaveBeenCalledWith(
+      "/tmp/codex-form-fill-test/codex-last-message.txt",
+      "utf8"
+    );
+    expect(rmMock).toHaveBeenCalledWith("/tmp/codex-form-fill-test", {
+      recursive: true,
+      force: true
     });
     expect(result).toEqual({
       stoppedAtSubmit: true,
-      screenshotPaths: ["artifacts/form-fill-1717171717000.png"],
-      finalUrl: "https://jobs.example.com/apply"
+      screenshotPaths: ["artifacts/step-1.png", "artifacts/step-2.png"],
+      finalUrl: "https://jobs.example.com/apply#submit",
+      manualActionRequired: false,
+      manualActionReason: null,
+      orderedReasons: [],
+      skillDeviationReasons: []
     });
-    expect(closeMock).toHaveBeenCalledTimes(1);
-    dateNowSpy.mockRestore();
   });
 
-  test("keeps submit safety signal false when no submit button is visible", async () => {
-    countMock.mockResolvedValue(0);
+  test("accepts JSON wrapped in markdown code fences", async () => {
+    readFileMock.mockResolvedValue(
+      [
+        "Result:",
+        "```json",
+        '{"stoppedAtSubmit":false,"screenshotPaths":["artifacts/step.png"],"finalUrl":"https://jobs.example.com/apply","manualActionRequired":true,"manualActionReason":"security_verification","orderedReasons":["security_verification_page","form_not_reached"],"skillDeviationReasons":["inline_script_used_for_fallback"]}',
+        "```"
+      ].join("\n")
+    );
 
     const result = await autoFillApplication("https://jobs.example.com/opening");
 
-    expect(result.stoppedAtSubmit).toBe(false);
-    expect(closeMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      stoppedAtSubmit: false,
+      screenshotPaths: ["artifacts/step.png"],
+      finalUrl: "https://jobs.example.com/apply",
+      manualActionRequired: true,
+      manualActionReason: "security_verification",
+      orderedReasons: ["security_verification_page", "form_not_reached"],
+      skillDeviationReasons: ["inline_script_used_for_fallback"]
+    });
   });
 
-  test("always closes browser when navigation fails", async () => {
-    gotoMock.mockRejectedValue(new Error("Navigation timeout"));
+  test("passes configured CDP endpoint to codex exec env", async () => {
+    process.env.CDP_ENDPOINT = "http://localhost:9333";
+
+    await autoFillApplication("https://jobs.example.com/opening");
+
+    const [, , options] = execFileMock.mock.calls[0] as [
+      string,
+      string[],
+      { env?: Record<string, string | undefined> }
+    ];
+    expect(options.env?.CDP_ENDPOINT).toBe("http://localhost:9333");
+  });
+
+  test("cleans temp directory and throws when codex exec fails", async () => {
+    execFileMock.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: ExecCallback
+      ) => {
+        callback(new Error("spawn codex ENOENT"), "", "");
+        return {} as never;
+      }
+    );
 
     await expect(autoFillApplication("https://jobs.example.com/opening")).rejects.toThrow(
-      "Navigation timeout"
+      "codex exec failed"
     );
-    expect(closeMock).toHaveBeenCalledTimes(1);
+    expect(rmMock).toHaveBeenCalledWith("/tmp/codex-form-fill-test", {
+      recursive: true,
+      force: true
+    });
+    expect(readFileMock).not.toHaveBeenCalled();
   });
 });
