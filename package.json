@@ -19,6 +19,8 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "pr:create": "bash scripts/create-pr.sh",
+    "task:start": "bash scripts/task-start.sh",
+    "task:finish": "bash scripts/task-finish.sh",
     "hooks:install": "bash scripts/install-hooks.sh",
     "chrome:remote": "bash scripts/start-chrome-remote.sh"
   },
