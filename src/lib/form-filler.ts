@@ -1,35 +1,140 @@
 import { mkdir } from "node:fs/promises";
-import { chromium } from "playwright";
+import {
+  FormFillRunnerBusyError,
+  runFormFillWithTmux,
+  type FormFillRunMetadata
+} from "@/lib/form-fill-runner";
 
-export interface FormFillResult {
+export interface FormFillResult extends FormFillRunMetadata {
   stoppedAtSubmit: boolean;
   screenshotPaths: string[];
   finalUrl: string;
+  manualActionRequired: boolean;
+  manualActionReason: string | null;
+  orderedReasons: string[];
+  skillDeviationReasons: string[];
 }
+
+type ParsedFormFillPayload = Omit<FormFillResult, keyof FormFillRunMetadata>;
 
 const ARTIFACTS_DIR = "artifacts";
+const FORM_FILL_TIMEOUT_MS = Number(process.env.FORM_FILL_AGENT_TIMEOUT_MS ?? 15 * 60 * 1000);
+const DEFAULT_CDP_ENDPOINT = "http://localhost:9222";
+
+function buildFormFillPrompt(applicationUrl: string): string {
+  return [
+    "Use the repository skill at .agents/skills/job-application-form-filler/SKILL.md.",
+    "Load profile data from user-profile.local.md when available, otherwise user-profile.md.",
+    "Connect to the user's already-running Chrome via CDP using CDP_ENDPOINT (default http://localhost:9222).",
+    "Do not launch a new browser or use headless mode.",
+    "Do not close the connected browser, context, or application tab at the end of the run.",
+    "All browser interactions must use the CLI tool at scripts/form-fill-cli.ts.",
+    "Do not use raw Playwright actions or page.evaluate directly inside the run.",
+    "Use this loop repeatedly: snapshot -> decide -> fill/dropdown/textarea/upload -> screenshot -> snapshot verify -> click Next/Continue.",
+    "If submit is visible, stop immediately and do not click submit.",
+    "Run the full job application form-fill workflow for this application URL:",
+    applicationUrl,
+    "If blocked by CAPTCHA/login/2FA/network/sandbox, stop and still return JSON.",
+    "Do not modify tracked repository files.",
+    "Do not run scripts/run-form-fill-agent.sh, do not call /api/form-fill, and do not start tmux from inside this run.",
+    "Return ONLY valid JSON. Do not return markdown.",
+    "Use this exact shape:",
+    '{"stoppedAtSubmit": boolean, "screenshotPaths": string[], "finalUrl": string, "manualActionRequired": boolean, "manualActionReason": string | null, "orderedReasons": string[], "skillDeviationReasons": string[]}'
+  ].join("\n");
+}
+
+function extractJsonPayload(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed;
+  }
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+
+  const objectStart = trimmed.indexOf("{");
+  const objectEnd = trimmed.lastIndexOf("}");
+  if (objectStart !== -1 && objectEnd > objectStart) {
+    return trimmed.slice(objectStart, objectEnd + 1).trim();
+  }
+
+  throw new Error("form-fill runner response did not include JSON output.");
+}
+
+function parseFormFillResult(raw: string): ParsedFormFillPayload {
+  const payload = JSON.parse(extractJsonPayload(raw)) as Partial<ParsedFormFillPayload>;
+
+  if (typeof payload.stoppedAtSubmit !== "boolean") {
+    throw new Error("form-fill result missing boolean stoppedAtSubmit.");
+  }
+
+  if (!Array.isArray(payload.screenshotPaths)) {
+    throw new Error("form-fill result missing screenshotPaths array.");
+  }
+
+  if (!payload.screenshotPaths.every((pathValue) => typeof pathValue === "string")) {
+    throw new Error("form-fill result screenshotPaths must contain only strings.");
+  }
+
+  if (typeof payload.finalUrl !== "string" || payload.finalUrl.trim().length === 0) {
+    throw new Error("form-fill result missing finalUrl.");
+  }
+
+  if (typeof payload.manualActionRequired !== "boolean") {
+    throw new Error("form-fill result missing boolean manualActionRequired.");
+  }
+
+  if (typeof payload.manualActionReason !== "string" && payload.manualActionReason !== null) {
+    throw new Error("form-fill result manualActionReason must be string or null.");
+  }
+
+  if (!Array.isArray(payload.orderedReasons)) {
+    throw new Error("form-fill result missing orderedReasons array.");
+  }
+
+  if (!payload.orderedReasons.every((reason) => typeof reason === "string")) {
+    throw new Error("form-fill result orderedReasons must contain only strings.");
+  }
+
+  if (!Array.isArray(payload.skillDeviationReasons)) {
+    throw new Error("form-fill result missing skillDeviationReasons array.");
+  }
+
+  if (!payload.skillDeviationReasons.every((reason) => typeof reason === "string")) {
+    throw new Error("form-fill result skillDeviationReasons must contain only strings.");
+  }
+
+  return {
+    stoppedAtSubmit: payload.stoppedAtSubmit,
+    screenshotPaths: payload.screenshotPaths,
+    finalUrl: payload.finalUrl,
+    manualActionRequired: payload.manualActionRequired,
+    manualActionReason: payload.manualActionReason,
+    orderedReasons: payload.orderedReasons,
+    skillDeviationReasons: payload.skillDeviationReasons
+  };
+}
 
 export async function autoFillApplication(applicationUrl: string): Promise<FormFillResult> {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
+  await mkdir(ARTIFACTS_DIR, { recursive: true });
+  const cdpEndpoint = process.env.CDP_ENDPOINT?.trim() || DEFAULT_CDP_ENDPOINT;
 
-  try {
-    await mkdir(ARTIFACTS_DIR, { recursive: true });
-    await page.goto(applicationUrl, { waitUntil: "domcontentloaded" });
+  const run = await runFormFillWithTmux({
+    prompt: buildFormFillPrompt(applicationUrl),
+    cdpEndpoint,
+    timeoutMs: FORM_FILL_TIMEOUT_MS
+  });
 
-    // Bootstrap safety: do not submit any form automatically.
-    const hasSubmit = await page.locator('button:has-text("Submit"), input[type="submit"]').count();
-
-    const screenshotPath = `${ARTIFACTS_DIR}/form-fill-${Date.now()}.png`;
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-
-    return {
-      stoppedAtSubmit: hasSubmit > 0,
-      screenshotPaths: [screenshotPath],
-      finalUrl: page.url()
-    };
-  } finally {
-    // Intentionally keep browser open during real run; close for bootstrap placeholder.
-    await browser.close();
-  }
+  const parsed = parseFormFillResult(run.rawOutput);
+  return {
+    ...parsed,
+    runId: run.runId,
+    runDir: run.runDir,
+    agentLogPath: run.agentLogPath,
+    rawOutputPath: run.rawOutputPath
+  };
 }
+
+export { FormFillRunnerBusyError };
