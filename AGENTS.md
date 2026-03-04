@@ -10,14 +10,14 @@ This file is the single source of truth for Codex agents in this repository.
 
 ## Required Workflow
 
-0. Run `npm run hooks:install` once per clone (applies to that clone's worktrees too).
-1. Never work directly on `main`.
-2. Create a feature branch: `git switch -c codex/<short-task-name>`.
-3. Keep changes focused to the requested task.
-4. Before commit, run `npm run check`.
-5. Commit with a clear message.
-6. Push branch to `origin`.
-7. Open/update PR with `npm run pr:create` and report the PR URL plus check results.
+1. Run `npm run hooks:install` once per clone (applies to that clone's worktrees too).
+2. Never work directly on `main`.
+3. Create a feature branch: `git switch -c codex/<short-task-name>`.
+4. Keep changes focused to the requested task.
+5. Before commit, run `npm run check`.
+6. Commit with a clear message.
+7. Push branch to `origin`.
+8. Open/update PR with `npm run pr:create` and report the PR URL plus check results.
 
 ## Coding Rules
 
