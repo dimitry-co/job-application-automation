@@ -1,40 +1,17 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { closeMock, countMock, gotoMock, launchMock, newPageMock, screenshotMock, urlMock } =
-  vi.hoisted(() => {
-    const goto = vi.fn();
-    const count = vi.fn();
-    const screenshot = vi.fn();
-    const url = vi.fn();
-    const close = vi.fn();
-    const newPage = vi.fn(async () => ({
-      goto,
-      locator: vi.fn(() => ({
-        count
-      })),
-      screenshot,
-      url
-    }));
-    const launch = vi.fn(async () => ({
-      newPage,
-      close
-    }));
+const { mkdirMock, runFormFillWithTmuxMock } = vi.hoisted(() => ({
+  mkdirMock: vi.fn(),
+  runFormFillWithTmuxMock: vi.fn()
+}));
 
-    return {
-      closeMock: close,
-      countMock: count,
-      gotoMock: goto,
-      launchMock: launch,
-      newPageMock: newPage,
-      screenshotMock: screenshot,
-      urlMock: url
-    };
-  });
+vi.mock("node:fs/promises", () => ({
+  mkdir: mkdirMock
+}));
 
-vi.mock("playwright", () => ({
-  chromium: {
-    launch: launchMock
-  }
+vi.mock("@/lib/form-fill-runner", () => ({
+  runFormFillWithTmux: runFormFillWithTmuxMock,
+  FormFillRunnerBusyError: class FormFillRunnerBusyError extends Error {}
 }));
 
 import { autoFillApplication } from "@/lib/form-filler";
@@ -42,54 +19,118 @@ import { autoFillApplication } from "@/lib/form-filler";
 describe("autoFillApplication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    gotoMock.mockResolvedValue(undefined);
-    countMock.mockResolvedValue(1);
-    screenshotMock.mockResolvedValue(undefined);
-    urlMock.mockReturnValue("https://jobs.example.com/apply");
+    mkdirMock.mockResolvedValue(undefined);
+    runFormFillWithTmuxMock.mockResolvedValue({
+      runId: "run-1",
+      runDir: "/tmp/run-1",
+      agentLogPath: "/tmp/run-1/pane.log",
+      rawOutputPath: "/tmp/run-1/last-message.txt",
+      rawOutput: JSON.stringify({
+        stoppedAtSubmit: true,
+        screenshotPaths: ["artifacts/step-1.png", "artifacts/step-2.png"],
+        finalUrl: "https://jobs.example.com/apply#submit",
+        manualActionRequired: false,
+        manualActionReason: null,
+        orderedReasons: [],
+        skillDeviationReasons: []
+      })
+    });
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  test("captures screenshot and reports submit stopping point", async () => {
-    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1_717_171_717_000);
-
+  test("runs tmux form-fill runner and returns parsed JSON result with run metadata", async () => {
     const result = await autoFillApplication("https://jobs.example.com/opening");
 
-    expect(launchMock).toHaveBeenCalledWith({ headless: false });
-    expect(newPageMock).toHaveBeenCalledTimes(1);
-    expect(gotoMock).toHaveBeenCalledWith("https://jobs.example.com/opening", {
-      waitUntil: "domcontentloaded"
-    });
-    expect(screenshotMock).toHaveBeenCalledWith({
-      path: "artifacts/form-fill-1717171717000.png",
-      fullPage: true
-    });
+    expect(mkdirMock).toHaveBeenCalledWith("artifacts", { recursive: true });
+    expect(runFormFillWithTmuxMock).toHaveBeenCalledTimes(1);
+    const [input] = runFormFillWithTmuxMock.mock.calls[0] as [
+      { prompt: string; cdpEndpoint: string; timeoutMs: number }
+    ];
+    expect(input.cdpEndpoint).toBe("http://localhost:9222");
+    expect(input.prompt).toContain("https://jobs.example.com/opening");
+    expect(input.prompt).toContain("Return ONLY valid JSON. Do not return markdown.");
+    expect(input.prompt).toContain(
+      "All browser interactions must use the CLI tool at scripts/form-fill-cli.ts."
+    );
+    expect(input.prompt).toContain("Do not use raw Playwright actions");
+    expect(input.prompt).toContain("do not start tmux from inside this run");
+
     expect(result).toEqual({
       stoppedAtSubmit: true,
-      screenshotPaths: ["artifacts/form-fill-1717171717000.png"],
-      finalUrl: "https://jobs.example.com/apply"
+      screenshotPaths: ["artifacts/step-1.png", "artifacts/step-2.png"],
+      finalUrl: "https://jobs.example.com/apply#submit",
+      manualActionRequired: false,
+      manualActionReason: null,
+      orderedReasons: [],
+      skillDeviationReasons: [],
+      runId: "run-1",
+      runDir: "/tmp/run-1",
+      agentLogPath: "/tmp/run-1/pane.log",
+      rawOutputPath: "/tmp/run-1/last-message.txt"
     });
-    expect(closeMock).toHaveBeenCalledTimes(1);
-    dateNowSpy.mockRestore();
   });
 
-  test("keeps submit safety signal false when no submit button is visible", async () => {
-    countMock.mockResolvedValue(0);
+  test("accepts JSON wrapped in markdown code fences", async () => {
+    runFormFillWithTmuxMock.mockResolvedValue({
+      runId: "run-2",
+      runDir: "/tmp/run-2",
+      agentLogPath: "/tmp/run-2/pane.log",
+      rawOutputPath: "/tmp/run-2/last-message.txt",
+      rawOutput: [
+        "Result:",
+        "```json",
+        '{"stoppedAtSubmit":false,"screenshotPaths":["artifacts/step.png"],"finalUrl":"https://jobs.example.com/apply","manualActionRequired":true,"manualActionReason":"security_verification","orderedReasons":["security_verification_page","form_not_reached"],"skillDeviationReasons":["inline_script_used_for_fallback"]}',
+        "```"
+      ].join("\n")
+    });
 
     const result = await autoFillApplication("https://jobs.example.com/opening");
 
-    expect(result.stoppedAtSubmit).toBe(false);
-    expect(closeMock).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      stoppedAtSubmit: false,
+      screenshotPaths: ["artifacts/step.png"],
+      finalUrl: "https://jobs.example.com/apply",
+      manualActionRequired: true,
+      manualActionReason: "security_verification",
+      orderedReasons: ["security_verification_page", "form_not_reached"],
+      skillDeviationReasons: ["inline_script_used_for_fallback"],
+      runId: "run-2",
+      runDir: "/tmp/run-2",
+      agentLogPath: "/tmp/run-2/pane.log",
+      rawOutputPath: "/tmp/run-2/last-message.txt"
+    });
   });
 
-  test("always closes browser when navigation fails", async () => {
-    gotoMock.mockRejectedValue(new Error("Navigation timeout"));
+  test("passes configured CDP endpoint to runner", async () => {
+    const originalCdpEndpoint = process.env.CDP_ENDPOINT;
+    process.env.CDP_ENDPOINT = "http://localhost:9333";
+
+    try {
+      await autoFillApplication("https://jobs.example.com/opening");
+    } finally {
+      if (typeof originalCdpEndpoint === "undefined") {
+        delete process.env.CDP_ENDPOINT;
+      } else {
+        process.env.CDP_ENDPOINT = originalCdpEndpoint;
+      }
+    }
+
+    const [input] = runFormFillWithTmuxMock.mock.calls[0] as [
+      { prompt: string; cdpEndpoint: string; timeoutMs: number }
+    ];
+    expect(input.cdpEndpoint).toBe("http://localhost:9333");
+  });
+
+  test("throws when runner output is missing JSON payload", async () => {
+    runFormFillWithTmuxMock.mockResolvedValue({
+      runId: "run-3",
+      runDir: "/tmp/run-3",
+      agentLogPath: "/tmp/run-3/pane.log",
+      rawOutputPath: "/tmp/run-3/last-message.txt",
+      rawOutput: "No structured output"
+    });
 
     await expect(autoFillApplication("https://jobs.example.com/opening")).rejects.toThrow(
-      "Navigation timeout"
+      "did not include JSON output"
     );
-    expect(closeMock).toHaveBeenCalledTimes(1);
   });
 });
