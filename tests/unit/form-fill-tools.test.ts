@@ -31,6 +31,9 @@ function makeLocator(overrides: Partial<Locator>): Locator {
     first: vi.fn(function first(this: Locator) {
       return this;
     }),
+    nth: vi.fn(function nth(this: Locator) {
+      return this;
+    }),
     ...overrides
   } as unknown as Locator;
 }
@@ -120,6 +123,58 @@ describe("form-fill-tools", () => {
       visibleText: "Visible page text",
       hasSubmitButton: true
     });
+  });
+
+  test("getPageSnapshot falls back to locator extraction when evaluate fails", async () => {
+    const fieldNode = makeLocator({
+      isVisible: vi.fn(async () => true),
+      evaluate: vi.fn(async () => ({
+        label: "Email",
+        type: "email",
+        tagName: "input",
+        value: "candidate@example.com",
+        required: true,
+        selectorHint: 'input[name="email"]'
+      }))
+    });
+
+    const fieldsLocator = makeLocator({
+      count: vi.fn(async () => 1),
+      nth: vi.fn(() => fieldNode)
+    });
+
+    const page = {
+      evaluate: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("snapshot evaluate failed"))
+        .mockResolvedValueOnce("Fallback visible text")
+        .mockResolvedValueOnce(false),
+      locator: vi.fn((selector: string) => {
+        if (selector === "input, textarea, select") {
+          return fieldsLocator;
+        }
+
+        return makeLocator({ count: vi.fn(async () => 0) });
+      }),
+      title: vi.fn(async () => "Application"),
+      url: vi.fn(() => "https://jobs.example.com/apply")
+    } as unknown as Page;
+
+    const snapshot = await getPageSnapshot(page);
+
+    expect(snapshot.fields).toEqual([
+      {
+        label: "Email",
+        type: "email",
+        tagName: "input",
+        value: "candidate@example.com",
+        required: true,
+        visible: true,
+        selectorHint: 'input[name="email"]'
+      }
+    ]);
+    expect(snapshot.visibleText).toBe("Fallback visible text");
+    expect(snapshot.hasSubmitButton).toBe(false);
   });
 
   test("fillField fills by label before fallbacks", async () => {

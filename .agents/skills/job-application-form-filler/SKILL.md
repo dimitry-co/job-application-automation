@@ -38,7 +38,8 @@ Use `scripts/form-fill-cli.ts` for **all browser interactions**.
   5. run `snapshot` again to verify values stuck
   6. run `click` for Next/Continue and repeat
 - For open-ended questions: read the exact question from `snapshot`, compose a tailored answer using job description + profile, then call `textarea`.
-- Stop when Submit is visible. Never click final Submit/Apply.
+- If Submit is visible on the current page, still fill all required fields first.
+- Stop only when the next action would be clicking final Submit/Apply. Never click final Submit/Apply.
 
 Examples:
 

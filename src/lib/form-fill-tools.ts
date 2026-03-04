@@ -560,8 +560,122 @@ export async function connectChrome(cdpEndpoint = DEFAULT_CDP_ENDPOINT): Promise
   return { browser, context, page };
 }
 
+async function getPageSnapshotFieldsFallback(page: Page): Promise<SnapshotField[]> {
+  const fieldsLocator = page.locator("input, textarea, select");
+  const count = await fieldsLocator.count().catch(() => 0);
+  if (count === 0) {
+    return [];
+  }
+
+  const fields: SnapshotField[] = [];
+  const limit = Math.min(count, 300);
+
+  for (let index = 0; index < limit; index += 1) {
+    const node = fieldsLocator.nth(index);
+    const details = await node
+      .evaluate((element) => {
+        const normalize = (text: string): string => text.trim().replace(/\s+/g, " ");
+
+        const inferLabel = (): string => {
+          const labels = Array.from((element as HTMLInputElement).labels || [])
+            .map((label) => normalize(label.textContent || ""))
+            .filter((value) => value.length > 0);
+          if (labels.length > 0) {
+            return labels.join(" / ");
+          }
+
+          const ariaLabel = normalize(element.getAttribute("aria-label") || "");
+          if (ariaLabel.length > 0) {
+            return ariaLabel;
+          }
+
+          const placeholder = normalize(element.getAttribute("placeholder") || "");
+          if (placeholder.length > 0) {
+            return placeholder;
+          }
+
+          const name = normalize(element.getAttribute("name") || "");
+          if (name.length > 0) {
+            return name;
+          }
+
+          const id = normalize(element.getAttribute("id") || "");
+          if (id.length > 0) {
+            return id;
+          }
+
+          return "";
+        };
+
+        const selectorHint = (): string => {
+          const id = element.getAttribute("id") || "";
+          if (id.length > 0) {
+            return `#${id}`;
+          }
+
+          const name = element.getAttribute("name") || "";
+          if (name.length > 0) {
+            return `${element.tagName.toLowerCase()}[name="${name}"]`;
+          }
+
+          const placeholder = element.getAttribute("placeholder") || "";
+          if (placeholder.length > 0) {
+            return `${element.tagName.toLowerCase()}[placeholder*="${placeholder.slice(0, 32)}"]`;
+          }
+
+          return element.tagName.toLowerCase();
+        };
+
+        const tagName = element.tagName.toLowerCase();
+        const type =
+          element instanceof HTMLInputElement
+            ? element.type || "text"
+            : element instanceof HTMLSelectElement
+              ? "select"
+              : tagName;
+
+        let value = "";
+        if (element instanceof HTMLSelectElement) {
+          value =
+            element.selectedIndex >= 0
+              ? element.options[element.selectedIndex]?.text || ""
+              : element.value || "";
+        } else if ("value" in element) {
+          value = (element as HTMLInputElement | HTMLTextAreaElement).value || "";
+        }
+
+        return {
+          label: inferLabel(),
+          type,
+          tagName,
+          value,
+          required:
+            (element instanceof HTMLInputElement ||
+              element instanceof HTMLTextAreaElement ||
+              element instanceof HTMLSelectElement) &&
+            element.required
+              ? true
+              : element.getAttribute("aria-required") === "true",
+          selectorHint: selectorHint()
+        };
+      })
+      .catch(() => null as Omit<SnapshotField, "visible"> | null);
+
+    if (!details) {
+      continue;
+    }
+
+    fields.push({
+      ...details,
+      visible: await safeVisible(node)
+    });
+  }
+
+  return fields;
+}
+
 export async function getPageSnapshot(page: Page): Promise<PageSnapshot> {
-  const fields = await page
+  let fields = await page
     .evaluate(() => {
       const normalize = (text: string): string => text.trim().replace(/\s+/g, " ");
 
@@ -646,6 +760,10 @@ export async function getPageSnapshot(page: Page): Promise<PageSnapshot> {
     })
     .catch(() => [] as SnapshotField[]);
 
+  if (fields.length === 0) {
+    fields = await getPageSnapshotFieldsFallback(page);
+  }
+
   const visibleText = await page
     .evaluate(() => {
       const body = document.body;
@@ -658,7 +776,7 @@ export async function getPageSnapshot(page: Page): Promise<PageSnapshot> {
 
   const hasSubmitButton = await page
     .evaluate(() => {
-      const submitRegex = /submit application|submit|review and submit|finish application|apply$/i;
+      const submitRegex = /submit application|submit|review and submit|finish application/i;
       const candidates = Array.from(
         document.querySelectorAll("button, input[type='submit'], [role='button']")
       );

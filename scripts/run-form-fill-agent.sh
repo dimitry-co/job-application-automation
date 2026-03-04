@@ -31,8 +31,7 @@ fi
 cd "$WORKDIR"
 
 cat "$PROMPT_FILE" | FORM_FILL_RUNNER_ACTIVE=1 CDP_ENDPOINT="$CDP_ENDPOINT_VALUE" codex exec \
-  --full-auto \
-  --sandbox danger-full-access \
+  --dangerously-bypass-approvals-and-sandbox \
   --cd "$WORKDIR" \
   --output-last-message "$OUTPUT_FILE" \
   -
