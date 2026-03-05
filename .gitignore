@@ -35,6 +35,8 @@ data/resumes/*.pdf
 user-profile.local.md
 user-profile*.local.md
 PROJECT_CONTEXT.local.md
+secrets/
+credentials.json
 
 # Planning docs not intended for repo
 IMPLEMENTATION_PLAN.md
